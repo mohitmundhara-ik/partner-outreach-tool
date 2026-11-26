@@ -10,6 +10,7 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, onCl
   const [f, setF] = useState(() => Object.fromEntries(EDITABLE.map((k) => [k, row[k] || ''])));
   const [name, setName] = useState('');
   const [tab, setTab] = useState('email');
+  const [mode, setMode] = useState('preview');
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const changed = Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== (row[k] || '')));
   const dirty = Object.keys(changed).length > 0;
@@ -81,15 +82,23 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, onCl
             <Field label="Subject"><input value={f[F.subject]} onChange={set(F.subject)} /></Field>
             <div className="mailbox">
               <div className="mail-head">
-                <div><span className="muted">To</span> {to.join(', ') || <span className="warn-text">no email</span>}{emails(f[F.cc]).length > 0 && <><span className="muted"> · Cc</span> {emails(f[F.cc]).join(', ')}</>}</div>
+                <div className="mail-head-row">
+                  <div><span className="muted">To</span> {to.join(', ') || <span className="warn-text">no email</span>}{emails(f[F.cc]).length > 0 && <><span className="muted"> · Cc</span> {emails(f[F.cc]).join(', ')}</>}</div>
+                  <div className="seg-toggle">
+                    <button className={mode === 'preview' ? 'on' : ''} onClick={() => setMode('preview')}>Preview</button>
+                    <button className={mode === 'edit' ? 'on' : ''} onClick={() => setMode('edit')}><Icon name="draft" size={14} /> Edit email</button>
+                  </div>
+                </div>
                 <div className="strong">{f[F.subject]}</div>
               </div>
-              <div className="mail" dangerouslySetInnerHTML={{ __html: emailHtml(f[F.body]) }} />
+              {mode === 'preview' ? (
+                <div className="mail" onDoubleClick={() => setMode('edit')} title="Double-click to edit" dangerouslySetInnerHTML={{ __html: emailHtml(f[F.body]) }} />
+              ) : (
+                <textarea className="mail-edit" rows={18} value={f[F.body]} onChange={set(F.body)} autoFocus />
+              )}
             </div>
-            <details className="raw">
-              <summary>Edit body text (fixed copy, change only placeholders)</summary>
-              <textarea rows={10} value={f[F.body]} onChange={set(F.body)} />
-            </details>
+            {mode === 'edit' && <p className="muted small">"Interview Kickstart" and "30-minute" are made bold automatically. Press Save to write the change to the sheet; Send and Save as draft use your edited text.</p>}
+            {dirty && <p className="warn-text small">Unsaved changes.</p>}
             {left.length > 0 && <p className="warn-text small">Fill in {left.join(', ')} before drafting or sending.</p>}
             {!to.length && <p className="muted small">No email address. Use the form link in Company details, then set the status to Sent.</p>}
           </>

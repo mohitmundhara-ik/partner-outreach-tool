@@ -1,0 +1,70 @@
+{
+ "rows": [
+  {
+   "_row": 2,
+   "company": "Example Dev Community",
+   "companyType": "Community",
+   "status": "Not sent",
+   "to": "hello@example.com",
+   "cc": "",
+   "audience": "Backend engineers",
+   "subject": "Example Dev Community x Interview Kickstart: A Partnership Idea",
+   "body": "Hi Asha,\n\nI've been following what Example Dev Community is building for tech professionals, especially your monthly backend meetups, and it's genuinely impressive.\n\nI'm Mohit from Interview Kickstart. Over the past 12 years, we've helped more than 27,000 engineers grow their careers, with programs taught by MAANG+ instructors. We're always looking to partner with platforms that serve the same audience.\n\nWe'd love to explore a partnership where we bring value to your audience through formats we already run well, such as live masterclasses, one-on-one sessions and offline meetups. Where that engagement leads people to enroll in one of our programs, we'd be happy to build a revenue share model that makes it rewarding for Example Dev Community as well.\n\nWould you be open to a 30-minute conversation next week to discuss how this could work for you?\n\nBest,\nMohit\nInterview Kickstart",
+   "initiative": "your monthly backend meetups",
+   "route": "Direct email",
+   "notes": "Demo row"
+  },
+  {
+   "_row": 3,
+   "company": "Sample Newsletter",
+   "companyType": "Newsletter",
+   "status": "Not sent",
+   "to": "team@example.org",
+   "cc": "",
+   "audience": "System design readers",
+   "subject": "Sample Newsletter x Interview Kickstart: A Partnership Idea",
+   "body": "Hi [Name],\n\nI've been following what Sample Newsletter is building for tech professionals, especially your weekly system design issue, and it's genuinely impressive.\n\nI'm Mohit from Interview Kickstart. Over the past 12 years, we've helped more than 27,000 engineers grow their careers, with programs taught by MAANG+ instructors. We're always looking to partner with platforms that serve the same audience.\n\nWe'd love to explore a partnership where we bring value to your audience through formats we already run well, such as live masterclasses, one-on-one sessions and offline meetups. Where that engagement leads people to enroll in one of our programs, we'd be happy to build a revenue share model that makes it rewarding for Sample Newsletter as well.\n\nWould you be open to a 30-minute conversation next week to discuss how this could work for you?\n\nBest,\nMohit\nInterview Kickstart",
+   "initiative": "your weekly system design issue",
+   "route": "Publisher email",
+   "notes": "Demo row: needs a contact name"
+  },
+  {
+   "_row": 4,
+   "company": "Demo Conf",
+   "companyType": "Event",
+   "status": "Sent",
+   "sentOn": "",
+   "to": "partners@example.net",
+   "subject": "Demo Conf x Interview Kickstart: A Partnership Idea",
+   "body": "Hi Ravi,\n\nI've been following what Demo Conf is building for tech professionals, especially Demo Conf 2027, and it's genuinely impressive.\n\nI'm Mohit from Interview Kickstart. Over the past 12 years, we've helped more than 27,000 engineers grow their careers, with programs taught by MAANG+ instructors. We're always looking to partner with platforms that serve the same audience.\n\nWe'd love to explore a partnership where we bring value to your audience through formats we already run well, such as live masterclasses, one-on-one sessions and offline meetups. Where that engagement leads people to enroll in one of our programs, we'd be happy to build a revenue share model that makes it rewarding for Demo Conf as well.\n\nWould you be open to a 30-minute conversation next week to discuss how this could work for you?\n\nBest,\nMohit\nInterview Kickstart",
+   "initiative": "Demo Conf 2027",
+   "route": "Shared email",
+   "notes": "Demo row"
+  },
+  {
+   "_row": 5,
+   "company": "Form Only Platform",
+   "companyType": "Platform",
+   "status": "Not sent",
+   "to": "",
+   "form": "https://example.com/partner-form",
+   "subject": "Form Only Platform x Interview Kickstart: A Partnership Idea",
+   "body": "Hi [Name],\n\nI've been following what Form Only Platform is building for tech professionals, especially your developer challenges, and it's genuinely impressive.\n\nI'm Mohit from Interview Kickstart. Over the past 12 years, we've helped more than 27,000 engineers grow their careers, with programs taught by MAANG+ instructors. We're always looking to partner with platforms that serve the same audience.\n\nWe'd love to explore a partnership where we bring value to your audience through formats we already run well, such as live masterclasses, one-on-one sessions and offline meetups. Where that engagement leads people to enroll in one of our programs, we'd be happy to build a revenue share model that makes it rewarding for Form Only Platform as well.\n\nWould you be open to a 30-minute conversation next week to discuss how this could work for you?\n\nBest,\nMohit\nInterview Kickstart",
+   "initiative": "your developer challenges",
+   "route": "Partner form",
+   "notes": "Demo row: form only"
+  }
+ ],
+ "template": {
+  "subject": "[Company] x Interview Kickstart: A Partnership Idea",
+  "body": "Hi [Name],\n\nI've been following what [Company] is building for tech professionals, especially [specific initiative or offering], and it's genuinely impressive.\n\nI'm Mohit from Interview Kickstart. Over the past 12 years, we've helped more than 27,000 engineers grow their careers, with programs taught by MAANG+ instructors. We're always looking to partner with platforms that serve the same audience.\n\nWe'd love to explore a partnership where we bring value to your audience through formats we already run well, such as live masterclasses, one-on-one sessions and offline meetups. Where that engagement leads people to enroll in one of our programs, we'd be happy to build a revenue share model that makes it rewarding for [Company] as well.\n\nWould you be open to a 30-minute conversation next week to discuss how this could work for you?\n\nBest,\nMohit\nInterview Kickstart"
+ },
+ "statuses": [
+  "Not sent",
+  "Sent",
+  "Replied",
+  "Call booked",
+  "Declined",
+  "Skip"
+ ]
+}

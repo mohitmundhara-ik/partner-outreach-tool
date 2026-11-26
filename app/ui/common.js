@@ -1,11 +1,12 @@
 'use client';
 import { F, stage, emails, placeholders } from '@/lib/fields';
-import { segmentOf, bandsOf, nextAction } from '@/lib/segments';
+import { segmentOf, bandsOf, nextAction, scoreOf } from '@/lib/segments';
 
 export const hasEmail = (r) => emails(r[F.to]).length > 0;
 export const missing = (r) => placeholders((r[F.subject] || '') + (r[F.body] || ''));
 export const isReady = (r) => stage(r[F.status]) === 'new' && hasEmail(r) && !missing(r).length;
-export const followUpDue = (r, today) => stage(r[F.status]) === 'sent' && r[F.followUp] && r[F.followUp] <= today;
+export const followUpDue = (r, today) => stage(r[F.status]) === 'sent' && !r[F.bouncedOn] && (Number(r[F.followUps]) || 0) < 2 && r[F.followUp] && r[F.followUp] <= today;
+export const score = (r) => scoreOf(r, { hasEmail: emails(r[F.to]).length > 0 });
 export const contacted = (r) => !!r[F.sentOn] || ['sent', 'replied', 'call'].includes(stage(r[F.status]));
 export const engaged = (r) => ['replied', 'call'].includes(stage(r[F.status]));
 export const action = (r, today) => nextAction(r, today, { hasEmail: hasEmail(r), missing: missing(r) });
@@ -19,6 +20,29 @@ export const STAGES = [
   ['call', 'Call booked'],
   ['closed', 'Closed'],
 ];
+
+export function Score({ value }) {
+  const tone = value >= 70 ? 'hi' : value >= 45 ? 'mid' : 'lo';
+  return <span className={'score sc-' + tone} title="Priority score: segment, audience fit, reach and contactability">{value}</span>;
+}
+
+const RT = { Interested: 'green', 'Not interested': 'grey', 'Wrong person': 'amber', 'Not now': 'amber', 'Out of office': 'grey', Bounced: 'red', Reply: 'blue' };
+export function ReplyTag({ row }) {
+  const t = row[F.replyType];
+  return t ? <Tag tone={RT[t] || 'blue'}>{t}</Tag> : null;
+}
+
+export function Modal({ icon = 'send', title, children, onClose, wide }) {
+  return (
+    <div className="overlay center" onClick={onClose}>
+      <div className={'modal' + (wide ? ' wide' : '')} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-icon"><Icon name={icon} size={22} /></div>
+        <h2>{title}</h2>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function Pill({ status }) {
   return <span className={'pill st-' + stage(status)}>{status || 'Not sent'}</span>;
@@ -73,6 +97,13 @@ const P = {
   copy: 'M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z',
   bolt: 'M7 2v11h3v9l7-12h-4l4-8z',
   menu: 'M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z',
+  results: 'M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z',
+  targets: 'M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm0-14a6 6 0 100 12 6 6 0 000-12zm0 10a4 4 0 110-8 4 4 0 010 8zm0-6a2 2 0 100 4 2 2 0 000-4z',
+  settings: 'M19.1 12.9a7 7 0 000-1.8l2-1.6-2-3.4-2.4 1a7 7 0 00-1.6-.9L14.8 4h-4l-.4 2.2a7 7 0 00-1.6.9l-2.4-1-2 3.4 2 1.6a7 7 0 000 1.8l-2 1.6 2 3.4 2.4-1c.5.4 1 .7 1.6.9l.4 2.2h4l.4-2.2c.6-.2 1.1-.5 1.6-.9l2.4 1 2-3.4-2-1.6zM12.8 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z',
+  calendar: 'M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H5V9h14v11zM7 11h5v5H7v-5z',
+  reply: 'M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z',
+  link: 'M3.9 12a3.1 3.1 0 013.1-3.1h4V7H7a5 5 0 000 10h4v-1.9H7A3.1 3.1 0 013.9 12zM8 13h8v-2H8v2zm9-6h-4v1.9h4a3.1 3.1 0 010 6.2h-4V17h4a5 5 0 000-10z',
+  warn: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z',
 };
 
 export function Icon({ name, size = 18 }) {

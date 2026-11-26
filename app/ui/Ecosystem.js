@@ -1,7 +1,7 @@
 'use client';
 import { F, stage, prettyDate } from '@/lib/fields';
 import { SEGMENTS, BANDS, segmentOf, bandsOf, focusOf, isCompetitor } from '@/lib/segments';
-import { contacted, engaged, pct, Pill, Tag, Icon, STAGES, action, Bands } from './common';
+import { contacted, engaged, pct, Pill, Tag, Icon, STAGES, action, Bands, ReplyTag, Score, score } from './common';
 
 function StageBar({ rows }) {
   const n = rows.length || 1;
@@ -45,6 +45,7 @@ export default function Ecosystem({ data, seg, setSeg, onOpen }) {
                 <span><b>{rs.filter(contacted).length}</b> contacted</span>
                 <span><b>{rs.filter(engaged).length}</b> replied</span>
                 <span><b>{s.plays.length}</b> plays</span>
+                {rs.some((r) => r[F.bouncedOn]) && <span className="bad"><b>{rs.filter((r) => r[F.bouncedOn]).length}</b> bounced</span>}
               </div>
               <div className="eco-bands">{bandCounts.slice(0, 3).map(([b, n]) => <span key={b.key} className="band">{b.name} · {n}</span>)}</div>
               <span className="eco-open">Open hub <Icon name="arrow" size={14} /></span>
@@ -80,6 +81,7 @@ function Segment({ data, seg, back, onOpen }) {
           <div><b>{nC}</b><span>contacted</span></div>
           <div><b>{nE}</b><span>replied</span></div>
           <div><b>{pct(nE, nC)}%</b><span>reply rate</span></div>
+          {rs.some((r) => r[F.bouncedOn]) && <div><b>{rs.filter((r) => r[F.bouncedOn]).length}</b><span>bounced</span></div>}
         </div>
       </section>
 
@@ -99,6 +101,8 @@ function Segment({ data, seg, back, onOpen }) {
                   <div className="prow-side">
                     {isCompetitor(r) && <Tag tone="red">competitor?</Tag>}
                     <Tag tone={a.tone}>{a.label}</Tag>
+                    {r[F.replyType] && r[F.replyType] !== 'Bounced' && <ReplyTag row={r} />}
+                    <Score value={score(r)} />
                     <Pill status={r[F.status]} />
                     <span className="muted small date">{prettyDate(r[F.sentOn])}</span>
                   </div>

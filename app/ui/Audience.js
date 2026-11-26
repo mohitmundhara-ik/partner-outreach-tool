@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { F } from '@/lib/fields';
 import { SEGMENTS, BANDS, FOCUS, segmentOf, bandsOf, focusOf } from '@/lib/segments';
-import { contacted, engaged, Pill } from './common';
+import { contacted, engaged, Pill, ReplyTag } from './common';
 
 export default function Audience({ data, go, onOpen }) {
   const { rows } = data;
@@ -55,7 +55,7 @@ export default function Audience({ data, go, onOpen }) {
       <div className="band-tabs">
         {BANDS.map((x) => (
           <button key={x.key} className={'band-tab' + (band === x.key ? ' on' : '')} onClick={() => setBand(x.key)}>
-            <b>{x.name}</b><span>{x.years} · {rows.filter((r) => inBand(r, x.key)).length} partners</span>
+            <b>{x.name}</b><span>{x.years} · {rows.filter((r) => inBand(r, x.key)).length} partners{rows.some((r) => inBand(r, x.key) && r[F.bouncedOn]) ? ` · ${rows.filter((r) => inBand(r, x.key) && r[F.bouncedOn]).length} bounced` : ''}</span>
           </button>
         ))}
       </div>
@@ -74,12 +74,12 @@ export default function Audience({ data, go, onOpen }) {
           </div>
         </section>
         <section className="card">
-          <div className="card-head"><h2>Partners reaching {b.name.toLowerCase()}</h2><span className="muted small">{reach.filter(contacted).length} contacted · {reach.filter(engaged).length} replied</span></div>
+          <div className="card-head"><h2>Partners reaching {b.name.toLowerCase()}</h2><span className="muted small">{reach.filter(contacted).length} contacted · {reach.filter(engaged).length} replied{reach.some((r) => r[F.bouncedOn]) ? ` · ${reach.filter((r) => r[F.bouncedOn]).length} bounced` : ''}</span></div>
           <div className="plist compact">
             {reach.map((r) => (
               <button key={r._row} className="prow" onClick={() => onOpen(r._row)}>
                 <div className="prow-main"><span className="strong">{r[F.company]}</span><span className="muted small">{r[F.audience]}</span></div>
-                <div className="prow-side"><Pill status={r[F.status]} /></div>
+                <div className="prow-side"><ReplyTag row={r} /><Pill status={r[F.status]} /></div>
               </button>
             ))}
           </div>

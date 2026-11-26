@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { F, DEFAULT_STATUSES, addDays, prettyDate } from '@/lib/fields';
+import { F, DEFAULT_STATUSES, addDays, prettyDate, fillTemplate } from '@/lib/fields';
+import { segmentOf } from '@/lib/segments';
 import { Icon } from './ui/common';
 import Overview from './ui/Overview';
 import Ecosystem from './ui/Ecosystem';
@@ -9,6 +10,10 @@ import Pipeline from './ui/Pipeline';
 import Partners from './ui/Partners';
 import Editor, { ConfirmSend } from './ui/Editor';
 import AddPartner from './ui/AddPartner';
+import Results from './ui/Results';
+import Targets from './ui/Targets';
+import Settings from './ui/Settings';
+import { FollowUpModal, MeetModal } from './ui/Modals';
 
 let cfgPromise;
 function getCfg() {
@@ -52,6 +57,9 @@ const NAV = [
   ['audience', 'Audience map'],
   ['pipeline', 'Pipeline'],
   ['partners', 'All partners'],
+  ['targets', 'Targets library'],
+  ['results', 'Results'],
+  ['settings', 'Settings'],
   ['add', 'Add partner'],
 ];
 
@@ -66,6 +74,8 @@ export default function App() {
   const [preset, setPreset] = useState(null);
   const [openRow, setOpenRow] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [fu, setFu] = useState(null);
+  const [meet, setMeet] = useState(null);
   const [busy, setBusy] = useState('');
   const [synced, setSynced] = useState('');
   const [navOpen, setNavOpen] = useState(false);
@@ -118,10 +128,78 @@ export default function App() {
     try {
       const out = await api('send', { row: r._row });
       replaceRow(out);
+      patchSettings({ sentToday: (data.settings?.sentToday || 0) + 1 });
       setConfirm(null);
       flash(data?.demo
         ? 'Demo mode: nothing was sent, the row was marked Sent'
         : `Sent to ${r[F.company]}${out._sentFrom === 'draft' ? ' (your Gmail draft)' : ''}. Marked Sent, follow-up ${prettyDate(out[F.followUp] || addDays(data.today, 5))}.`, 'good');
+    } catch (e) { flash(e.message, 'bad'); }
+    setBusy('');
+  }
+
+  const patchSettings = (st) => setData((d) => ({ ...d, settings: { ...(d.settings || {}), ...st } }));
+
+  async function followUp(text) {
+    const r = data.rows.find((x) => x._row === fu.row);
+    setBusy('followup');
+    try {
+      const out = await api('followup', { row: r._row, text });
+      replaceRow(out);
+      patchSettings({ sentToday: (data.settings?.sentToday || 0) + 1 });
+      setFu(null);
+      flash(data?.demo ? 'Demo mode: nothing was sent, the row was updated' : `Follow-up ${fu.n} sent to ${r[F.company]}${out._inThread ? ' in the same thread' : ''}`, 'good');
+    } catch (e) { flash(e.message, 'bad'); }
+    setBusy('');
+  }
+
+  async function book(payload) {
+    const r = data.rows.find((x) => x._row === meet);
+    setBusy('meet');
+    try {
+      replaceRow(await api('meet', { row: r._row, ...payload }));
+      setMeet(null);
+      flash(data?.demo ? 'Demo mode: no event created, the row was marked Call booked' : `Call booked with ${r[F.company]}. It is in your Google Calendar.`, 'good');
+    } catch (e) { flash(e.message, 'bad'); }
+    setBusy('');
+  }
+
+  async function saveSettings(set) {
+    setBusy('settings');
+    try { const st = await api('settings', { set }); patchSettings(st); flash('Settings saved', 'good'); } catch (e) { flash(e.message, 'bad'); }
+    setBusy('');
+  }
+
+  async function saveTemplate(which, text) {
+    setBusy('template');
+    try { const t = await api('saveTemplate', { which, text }); setData((d) => ({ ...d, template: t })); flash('Template saved to the Master email tab', 'good'); } catch (e) { flash(e.message, 'bad'); }
+    setBusy('');
+  }
+
+  async function updateTarget(row, fields) {
+    setBusy('target');
+    try { const t = await api('target', { row, fields }); setData((d) => ({ ...d, targets: t })); } catch (e) { flash(e.message, 'bad'); }
+    setBusy('');
+  }
+
+  async function addTarget(fields) {
+    setBusy('target');
+    try { const t = await api('addTarget', { fields }); setData((d) => ({ ...d, targets: t })); flash(fields.company + ' added to Targets', 'good'); } catch (e) { flash(e.message, 'bad'); }
+    setBusy('');
+  }
+
+  async function promote(t) {
+    setBusy('target');
+    try {
+      const mail = fillTemplate(data.template, { company: t.company, initiative: '', name: '' });
+      const row = await api('add', { fields: {
+        [F.company]: t.company, [F.companyType]: t.type || '', [F.audience]: t.audience || '', [F.notes]: [t.why, t.website, t.city].filter(Boolean).join(' · '),
+        [F.subject]: mail.subject, [F.body]: mail.body, [F.route]: 'Direct email', [F.source]: 'Targets library',
+      } });
+      setData((d) => ({ ...d, rows: [...d.rows, row] }));
+      const tl = await api('target', { row: t._row, fields: { tstatus: 'Added', added: data.today } });
+      setData((d) => ({ ...d, targets: tl }));
+      flash(`${t.company} added to your pipeline. Add the contact email and the initiative line.`, 'good');
+      setOpenRow(row._row);
     } catch (e) { flash(e.message, 'bad'); }
     setBusy('');
   }
@@ -131,7 +209,7 @@ export default function App() {
     try {
       const r = await api('sync');
       await load();
-      flash(`Synced with Gmail and the sheet: ${r.sent} newly sent, ${r.replied} new replies`, 'good');
+      flash(`Synced: ${r.sent} newly sent, ${r.replied} new replies${r.bounced ? `, ${r.bounced} bounced` : ''}${r.ooo ? `, ${r.ooo} out of office` : ''}`, 'good');
     } catch (e) { flash(e.message, 'bad'); }
     setBusy('');
   }
@@ -176,7 +254,8 @@ export default function App() {
           <button className="btn sync" onClick={sync} disabled={!!busy}>
             <Icon name="sync" size={16} /> {busy === 'sync' ? 'Syncing…' : 'Sync now'}
           </button>
-          <span>{synced ? 'Last synced ' + synced : ''}</span>
+          <span>{synced ? 'Last synced ' + synced : ''}{data.settings?.syncOn ? ' · auto every 15 min' : ''}</span>
+          <span>{data.settings?.sentToday || 0} of {data.settings?.cap || 30} sends used today</span>
           <span>Google Sheet + Gmail</span>
         </div>
       </aside>
@@ -192,7 +271,10 @@ export default function App() {
         </header>
         {data.demo && <div className="banner">Demo mode: made-up sample rows. Nothing is saved, drafted or sent.</div>}
 
-        {view === 'overview' && <Overview data={data} go={go} onOpen={setOpenRow} />}
+        {view === 'overview' && <Overview data={data} go={go} onOpen={setOpenRow} onGoal={(g) => g !== data.settings?.goal && !data.demo && saveSettings({ goal: g })} />}
+        {view === 'targets' && <Targets data={data} busy={busy === 'target'} go={go} onPromote={promote} onTarget={updateTarget} onAddTarget={addTarget} />}
+        {view === 'results' && <Results data={data} onOpen={setOpenRow} />}
+        {view === 'settings' && <Settings data={data} busy={!!busy} onSave={saveSettings} onSaveTemplate={saveTemplate} />}
         {view === 'ecosystem' && <Ecosystem data={data} seg={seg} setSeg={setSeg} onOpen={setOpenRow} />}
         {view === 'audience' && <Audience data={data} go={go} onOpen={setOpenRow} />}
         {view === 'pipeline' && <Pipeline data={data} onOpen={setOpenRow} />}
@@ -200,8 +282,11 @@ export default function App() {
         {view === 'add' && <AddPartner template={data.template} types={[...new Set(data.rows.map((r) => r[F.companyType]).filter(Boolean))].sort()} onAdd={add} busy={busy === 'add'} />}
       </main>
 
-      {open && <Editor key={open._row + ':' + (open[F.updated] || '') + ':' + (open[F.status] || '')} row={open} statuses={statuses} today={data.today} busy={busy} hasSegmentCol={hasSegmentCol}
+      {open && <Editor key={[open._row, open[F.updated], open[F.status], open[F.followUps], open[F.followUp], open[F.deal], open[F.meetingOn], open[F.replyType]].join(':')} row={open} statuses={statuses} today={data.today} busy={busy} hasSegmentCol={hasSegmentCol} linkBase={data.settings?.linkBase}
+        loadThread={(row) => api('thread', { row })} onFollowUp={(n) => setFu({ row: open._row, n })} onMeet={() => setMeet(open._row)}
         onClose={() => setOpenRow(null)} onSave={(f) => save(open._row, f)} onDraft={(f) => draft(open._row, f)} onSend={(f) => askSend(open._row, f)} />}
+      {fu && <FollowUpModal row={data.rows.find((x) => x._row === fu.row)} n={fu.n} template={data.template} today={data.today} busy={busy === 'followup' || busy === 'template'} onCancel={() => setFu(null)} onSend={followUp} onSaveTemplate={saveTemplate} />}
+      {meet && <MeetModal row={data.rows.find((x) => x._row === meet)} busy={busy === 'meet'} onCancel={() => setMeet(null)} onBook={book} />}
       {confirm && <ConfirmSend row={confirm} busy={busy === 'send'} onCancel={() => setConfirm(null)} onConfirm={send} />}
       {toast && <div className={'toast ' + toast.tone}>{toast.m}</div>}
     </div>

@@ -57,5 +57,13 @@ npm run dev
 - **Pipeline**: board by stage. **All partners**: searchable table with inline status.
 - **Send now**: sends one partner's email from your Gmail after a confirm step. If a Gmail draft with the same subject and recipient exists, that draft is sent. The row becomes Sent, Sent on is today and the follow-up is set for 5 days later. Rows that are not "Not sent" are never re-sent.
 - **Sync**: checks Gmail for sent emails and replies, updates the sheet, and reloads everything.
+- **Follow-ups in the same thread**: follow-up 1 about 5 days after the first email, follow-up 2 about 7 days later, each sent as a reply after a confirm step. Templates are edited in Settings and stored in the Master email tab (A6 and A9).
+- **Partnership Outreach label**: every email sent from the hub, and every thread found by Sync, gets this Gmail label.
+- **Bounces**: Sync spots delivery failures, sets "Bounced on" and shows bounced partners in the command center, ecosystem, audience map, pipeline and partner list.
+- **Email trail**: each partner opens on the full Gmail thread, including their replies. Replies are tagged (Interested, Not now, Wrong person, Not interested, Out of office).
+- **Book call**: creates a Google Calendar event. The call brief stays private unless you choose to invite the partner.
+- **Results**: partnership stage, tracking link (utm), leads and enrolments per partner, rolled up by segment.
+- **Targets library**: the Targets tab in the sheet. Each target gets a priority score; gap alerts show which segments and audience bands are thin. "Add to pipeline" moves a target to the Emails tab with the master email.
+- **Settings**: auto-sync every 15 minutes, a 9:30 AM brief to yourself, daily send cap, daily goal and tracking link base. Run `authorize` once in Apps Script after pasting a new Code.gs.
 
 After changing `apps-script/Code.gs`, paste it into Apps Script, Save, then Deploy > Manage deployments > Edit > New version > Deploy (the URL stays the same).

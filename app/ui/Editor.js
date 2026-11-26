@@ -1,15 +1,15 @@
 'use client';
-import { useState } from 'react';
-import { F, stage, emailHtml, emails, placeholders, prettyDate } from '@/lib/fields';
-import { segmentOf, bandsOf, focusOf, isCompetitor } from '@/lib/segments';
-import { Field, Icon, Pill, Tag, withCurrent, followUpDue, action } from './common';
+import { useEffect, useState } from 'react';
+import { F, stage, emailHtml, emails, placeholders, prettyDate, DEAL_STAGES, MAX_FOLLOW_UPS } from '@/lib/fields';
+import { segmentOf, bandsOf, focusOf, isCompetitor, fmtReach, reachOf } from '@/lib/segments';
+import { Field, Icon, Pill, Tag, withCurrent, followUpDue, action, ReplyTag, Score, score } from './common';
 
-const EDITABLE = [F.company, F.companyType, F.segment, F.to, F.cc, F.status, F.sentOn, F.subject, F.body, F.reply, F.next, F.notes, F.initiative, F.audience, F.form, F.how, F.suggested];
+const EDITABLE = [F.company, F.companyType, F.segment, F.to, F.cc, F.status, F.sentOn, F.subject, F.body, F.reply, F.next, F.notes, F.initiative, F.audience, F.form, F.how, F.suggested, F.deal, F.link, F.leads, F.enrolments, F.contacts, F.followUp];
 
-export default function Editor({ row, statuses, today, busy, hasSegmentCol, onClose, onSave, onDraft, onSend }) {
+export default function Editor({ row, statuses, today, busy, hasSegmentCol, linkBase, loadThread, onClose, onSave, onDraft, onSend, onFollowUp, onMeet }) {
   const [f, setF] = useState(() => Object.fromEntries(EDITABLE.map((k) => [k, row[k] || ''])));
   const [name, setName] = useState('');
-  const [tab, setTab] = useState('email');
+  const [tab, setTab] = useState(() => (stage(row[F.status]) === 'new' && !row[F.sentOn] ? 'email' : 'trail'));
   const [mode, setMode] = useState('preview');
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const changed = Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== (row[k] || '')));
@@ -22,6 +22,10 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, onCl
   const bands = bandsOf({ ...row, ...f });
   const focus = focusOf({ ...row, ...f });
   const a = action(row, today);
+  const nFU = Number(row[F.followUps]) || 0;
+  const canFollow = st === 'sent' && !row[F.bouncedOn] && nFU < MAX_FOLLOW_UPS && to.length > 0;
+  const slug = String(row[F.company] || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const makeLink = () => setF((x) => ({ ...x, [F.link]: (linkBase || 'https://interviewkickstart.com/in') + (String(linkBase || '').includes('?') ? '&' : '?') + 'utm_source=' + slug + '&utm_medium=partner&utm_campaign=partner_hub' }));
 
   function putName() {
     if (!name.trim()) return;
@@ -44,7 +48,7 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, onCl
       <aside className="panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <div>
-            <div className="panel-kicker"><span className={'seg seg-' + seg.key}>{seg.name}</span> <Pill status={row[F.status]} /> <Tag tone={a.tone}>{a.label}</Tag></div>
+            <div className="panel-kicker"><span className={'seg seg-' + seg.key}>{seg.name}</span> <Pill status={row[F.status]} /> <Tag tone={a.tone}>{a.label}</Tag> <ReplyTag row={row} /> <Score value={score(row)} /></div>
             <h2>{row[F.company]}</h2>
             <p className="muted small">{[row[F.companyType], row[F.route], row[F.verification]].filter(Boolean).join(' · ')}</p>
           </div>
@@ -52,20 +56,29 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, onCl
         </div>
 
         {isCompetitor(row) && <div className="banner red">Possible competitor. Decide before sending.</div>}
+        {row[F.bouncedOn] && <div className="banner red">The email to {row[F.to]} bounced on {prettyDate(row[F.bouncedOn])}. Find a new contact, change To, then set Status back to Not sent.</div>}
+        {row[F.reply] && ['replied', 'call', 'closed'].includes(st) && (
+          <div className="reply-card">
+            <div className="reply-head"><Icon name="reply" size={16} /> <b>Their reply</b> <ReplyTag row={row} /> <span className="muted small">{prettyDate(row[F.repliedOn])}</span></div>
+            <p>{row[F.reply]}</p>
+          </div>
+        )}
 
         <div className="timeline">
           <Step on={!!row[F.draftedOn]} label="Drafted" date={row[F.draftedOn]} />
           <Step on={!!row[F.sentOn]} label="Sent" date={row[F.sentOn]} />
-          <Step on={!!row[F.followUp] && st === 'sent'} warn={followUpDue(row, today)} label="Follow-up" date={st === 'sent' ? row[F.followUp] : ''} />
+          <Step on={nFU > 0} warn={followUpDue(row, today)} label={nFU ? `Follow-up ${nFU}/${MAX_FOLLOW_UPS}` : 'Follow-up'} date={followUpDue(row, today) || (st === 'sent' && nFU < MAX_FOLLOW_UPS) ? row[F.followUp] : row[F.lastFollowUp]} />
           <Step on={!!row[F.repliedOn]} label="Replied" date={row[F.repliedOn]} />
           <Step on={!!row[F.meetingOn]} label="Call" date={row[F.meetingOn]} />
         </div>
 
         <div className="ptabs">
-          {[['email', 'Email'], ['plays', 'Plays for the call'], ['details', 'Company details']].map(([k, l]) => (
+          {[...(st !== 'new' || row[F.sentOn] ? [['trail', 'Email trail']] : []), ['email', st === 'new' ? 'Email' : 'First email'], ['plays', 'Plays for the call'], ['details', 'Company details']].map(([k, l]) => (
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
           ))}
         </div>
+
+        {tab === 'trail' && <Trail row={row} load={loadThread} />}
 
         {tab === 'email' && (
           <>
@@ -127,6 +140,25 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, onCl
 
         {tab === 'details' && (
           <>
+            {['replied', 'call'].includes(st) || row[F.deal] ? (
+              <div className="deal-box">
+                <h3 style={{ marginTop: 0 }}>Partnership</h3>
+                <div className="deal-steps">
+                  {DEAL_STAGES.map((d) => <button key={d} className={'deal-step' + (f[F.deal] === d ? ' on' : '')} onClick={() => setF((x) => ({ ...x, [F.deal]: d }))}>{d}</button>)}
+                </div>
+                <Field label="Tracking link (share with the partner so you can count sign-ups from them)">
+                  <div className="namebar">
+                    <input value={f[F.link]} onChange={set(F.link)} placeholder="Create one with the button" />
+                    <button className="btn" onClick={makeLink}><Icon name="link" size={16} /> Create</button>
+                    {f[F.link] && <button className="btn ghost" onClick={() => navigator.clipboard.writeText(f[F.link])}><Icon name="copy" size={16} /></button>}
+                  </div>
+                </Field>
+                <div className="two">
+                  <Field label="Leads from this partner"><input type="number" min="0" value={f[F.leads]} onChange={set(F.leads)} /></Field>
+                  <Field label="Enrolments from this partner"><input type="number" min="0" value={f[F.enrolments]} onChange={set(F.enrolments)} /></Field>
+                </div>
+              </div>
+            ) : null}
             <div className="two">
               <Field label="Status">
                 <select value={f[F.status] || statuses[0]} onChange={set(F.status)}>{withCurrent(statuses, row[F.status]).map((s) => <option key={s}>{s}</option>)}</select>
@@ -142,7 +174,10 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, onCl
               <Field label="Audience"><input value={f[F.audience]} onChange={set(F.audience)} /></Field>
               <Field label="How to reach"><input value={f[F.how]} onChange={set(F.how)} /></Field>
               <Field label="Suggested contact (not in email)"><input value={f[F.suggested]} onChange={set(F.suggested)} /></Field>
+              <Field label="Follow-up due"><input type="date" value={f[F.followUp]} onChange={set(F.followUp)} /></Field>
             </div>
+            <Field label="Other contacts (name, role, email or LinkedIn, one per line)"><textarea rows={3} value={f[F.contacts]} onChange={set(F.contacts)} /></Field>
+            {reachOf(row[F.audience]) > 0 && <p className="muted small">Estimated reach: {fmtReach(reachOf(row[F.audience]))} (from the Audience column)</p>}
             <Field label="Form link">
               <div className="namebar">
                 <input value={f[F.form]} onChange={set(F.form)} />
@@ -167,13 +202,64 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, onCl
               </button>
             </>
           ) : (
-            <span className="muted small">Already {String(row[F.status]).toLowerCase()}{row[F.sentOn] ? ' on ' + prettyDate(row[F.sentOn]) : ''}. Sync picks up replies from Gmail.</span>
+            <>
+              {canFollow && (
+                <button className="btn send" disabled={!!busy} onClick={() => onFollowUp(nFU + 1)}>
+                  <Icon name="reply" size={16} /> Send follow-up {nFU + 1}
+                </button>
+              )}
+              {['sent', 'replied', 'call'].includes(st) && (
+                <button className={'btn' + (st === 'replied' ? ' send' : '')} disabled={!!busy} onClick={onMeet}>
+                  <Icon name="calendar" size={16} /> {st === 'call' ? 'Book another call' : 'Book call'}
+                </button>
+              )}
+              {!canFollow && st === 'sent' && <span className="muted small">{row[F.bouncedOn] ? 'Bounced.' : nFU >= MAX_FOLLOW_UPS ? 'Both follow-ups sent.' : ''} Sync picks up replies.</span>}
+              {st === 'closed' && <span className="muted small">Closed as {row[F.status]}.</span>}
+            </>
           )}
           <span className="spacer" />
           <button className="btn ghost" onClick={copy} title="Copy email with bold"><Icon name="copy" size={16} /></button>
           <button className="btn primary" disabled={!dirty || !!busy} onClick={() => onSave(changed)}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
         </div>
       </aside>
+    </div>
+  );
+}
+
+function Trail({ row, load }) {
+  const [state, setState] = useState({ loading: true });
+  useEffect(() => {
+    let live = true;
+    load(row._row).then((d) => live && setState({ data: d }), (e) => live && setState({ error: e.message }));
+    return () => { live = false; };
+  }, [row._row]);
+  if (state.loading) return <div className="trail-empty"><div className="loader small" /> Loading the email trail from Gmail…</div>;
+  if (state.error) return <p className="warn-text">{state.error}</p>;
+  const msgs = state.data?.messages || [];
+  if (!msgs.length) return <p className="muted">No emails found in Gmail for this partner yet. Emails sent outside the hub show up here once their subject matches the one on this row.</p>;
+  return (
+    <div className="trail">
+      <div className="trail-top">
+        <span className="muted small">{msgs.length} email{msgs.length > 1 ? 's' : ''} · labelled "Partnership Outreach" in Gmail</span>
+        {state.data.url && <a className="btn ghost small" href={state.data.url} target="_blank" rel="noreferrer">Open in Gmail</a>}
+      </div>
+      {msgs.map((m, i) => <Msg key={i} m={m} first={i === 0} />)}
+    </div>
+  );
+}
+
+function Msg({ m, first }) {
+  const [open, setOpen] = useState(!first || !m.mine);
+  const when = new Date(m.date).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  const who = m.bounce ? 'Delivery failed' : m.mine ? 'You' : String(m.from).replace(/<.*>/, '').replace(/"/g, '').trim() || m.from;
+  return (
+    <div className={'msg' + (m.mine ? ' mine' : '') + (m.bounce ? ' bounce' : '')}>
+      <button className="msg-head" onClick={() => setOpen(!open)}>
+        <span className="msg-who">{m.bounce && <Icon name="warn" size={14} />} {who}</span>
+        <span className="muted small">{when}</span>
+      </button>
+      {!m.mine && !m.bounce && <div className="muted small msg-addr">{m.from}</div>}
+      {open ? <div className="msg-body" dangerouslySetInnerHTML={{ __html: emailHtml(m.text) }} /> : <div className="msg-body clipped">{String(m.text).slice(0, 140)}…</div>}
     </div>
   );
 }

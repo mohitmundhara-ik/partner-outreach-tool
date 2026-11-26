@@ -1,14 +1,21 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { F, stage, addDays, prettyDate } from '@/lib/fields';
-import { SEGMENTS, BANDS, segmentOf, bandsOf } from '@/lib/segments';
-import { contacted, engaged, followUpDue, isReady, hasEmail, missing, pct, Meter, Icon, SegTag } from './common';
+import { SEGMENTS, BANDS, segmentOf, bandsOf, gapsOf } from '@/lib/segments';
+import { contacted, engaged, followUpDue, isReady, hasEmail, missing, pct, Meter, Icon, SegTag, Score, score, ReplyTag } from './common';
 
-export default function Overview({ data, go, onOpen }) {
+export default function Overview({ data, go, onOpen, onGoal }) {
   const { rows, today } = data;
-  const [goal, setGoal] = useState(10);
-  useEffect(() => { try { const g = Number(localStorage.getItem('ik_goal')); if (g) setGoal(g); } catch {} }, []);
+  const [goal, setGoal] = useState(data.settings?.goal || 10);
+  useEffect(() => {
+    if (data.settings?.goal) return;
+    try { const g = Number(localStorage.getItem('ik_goal')); if (g) setGoal(g); } catch {}
+  }, [data.settings?.goal]);
   const saveGoal = (g) => { setGoal(g); try { localStorage.setItem('ik_goal', String(g)); } catch {} };
+  const cap = data.settings?.cap || 30, usedToday = data.settings?.sentToday || 0;
+  const next = rows.filter((r) => isReady(r) && !r[F.bouncedOn]).map((r) => ({ r, s: score(r) })).sort((a, b) => b.s - a.s).slice(0, 6);
+  const gaps = gapsOf(rows).slice(0, 6);
+  const bounced = rows.filter((r) => r[F.bouncedOn] && ['new', 'sent'].includes(stage(r[F.status])));
 
   const on = (field, day) => rows.filter((r) => r[field] === day).length;
   const sentToday = on(F.sentOn, today);
@@ -55,7 +62,8 @@ export default function Overview({ data, go, onOpen }) {
           </p>
           <div className="hero-bar"><div style={{ width: `${Math.min(100, pct(sentToday, goal))}%` }} /></div>
           <div className="hero-meta">
-            <span>Daily goal <input type="number" min="1" value={goal} onChange={(e) => saveGoal(Number(e.target.value) || 1)} /></span>
+            <span>Daily goal <input type="number" min="1" value={goal} onChange={(e) => saveGoal(Number(e.target.value) || 1)} onBlur={() => onGoal && onGoal(goal)} /></span>
+            <span>{usedToday} of {cap} sends used today</span>
             <span>{week} sent in the last 7 days</span>
             {streak > 1 && <span>{streak}-day sending streak</span>}
           </div>
@@ -68,7 +76,7 @@ export default function Overview({ data, go, onOpen }) {
 
       <section className="kpis">
         <Kpi label="Partners in the system" value={rows.length} sub={`${open} still open`} onClick={() => go('partners')} />
-        <Kpi label="Contacted" value={nContacted} sub={`${pct(nContacted, rows.length)}% of the list`} onClick={() => go('pipeline')} />
+        <Kpi label="Contacted" value={nContacted} sub={bounced.length ? `${bounced.length} bounced` : `${pct(nContacted, rows.length)}% of the list`} tone={bounced.length ? 'redsub' : ''} onClick={() => (bounced.length ? go('partners', { view: 'bounced' }) : go('pipeline'))} />
         <Kpi label="Replies" value={nReplied} sub={`${on(F.repliedOn, today)} today`} tone="green" onClick={() => go('pipeline')} />
         <Kpi label="Calls booked" value={nCalls} sub={`${pct(nCalls, nContacted)}% of contacted`} tone="green" onClick={() => go('pipeline')} />
         <Kpi label="Follow-ups due" value={due.length} sub={due.length ? 'do these first' : 'all clear'} tone={due.length ? 'amber' : ''} onClick={() => go('partners', { view: 'due' })} />
@@ -102,6 +110,7 @@ export default function Overview({ data, go, onOpen }) {
               </div>
             ))}
           </div>
+          {bounced.length > 0 && <button className="gap-line gap-red" onClick={() => go('partners', { view: 'bounced' })}><Icon name="warn" size={14} /> {bounced.length} email{bounced.length > 1 ? 's' : ''} bounced. Find new contacts.</button>}
         </section>
       </div>
 
@@ -133,11 +142,34 @@ export default function Overview({ data, go, onOpen }) {
         </section>
       </div>
 
+      <div className="grid-main">
+        <section className="card">
+          <div className="card-head"><h2>Contact next</h2><span className="muted small">Ready to send, highest priority first</span></div>
+          <div className="plist">
+            {next.map(({ r, s }) => (
+              <button key={r._row} className="prow" onClick={() => onOpen(r._row)}>
+                <div className="prow-main"><span className="strong">{r[F.company]}</span><span className="muted small">{r[F.audience]}</span></div>
+                <div className="prow-side"><SegTag row={r} /><Score value={s} /></div>
+              </button>
+            ))}
+            {!next.length && <p className="muted">Nobody is ready to send. Check "Needs a contact or name" below, or add targets.</p>}
+          </div>
+        </section>
+        <section className="card">
+          <div className="card-head"><h2>Gaps</h2><button className="link" onClick={() => go('targets')}>Targets library <Icon name="arrow" size={14} /></button></div>
+          {gaps.map((g) => (
+            <button key={g.text} className={'gap-line gap-' + g.level} onClick={() => go('targets')}><Icon name="warn" size={14} /> {g.text}</button>
+          ))}
+          {!gaps.length && <p className="muted">No obvious gaps. Every band and segment has partners.</p>}
+        </section>
+      </div>
+
       <section className="card">
         <div className="card-head"><h2>Do next</h2><span className="muted small">In this order: follow-ups, replies, then new sends</span></div>
         <div className="todo">
-          <Todo title="Follow up" tone="amber" rows={due} onOpen={onOpen} extra={(r) => 'sent ' + prettyDate(r[F.sentOn])} />
-          <Todo title="Book the call" tone="green" rows={toBook} onOpen={onOpen} extra={(r) => 'replied ' + prettyDate(r[F.repliedOn])} />
+          <Todo title="Send follow-ups" tone="amber" rows={due} onOpen={onOpen} extra={(r) => (Number(r[F.followUps]) ? 'follow-up 2 · ' : 'follow-up 1 · ') + 'sent ' + prettyDate(r[F.sentOn])} />
+          <Todo title="Reply and book the call" tone="green" rows={toBook} onOpen={onOpen} extra={(r) => (r[F.replyType] ? r[F.replyType] + ' · ' : '') + 'replied ' + prettyDate(r[F.repliedOn])} />
+          <Todo title="Bounced: find a new contact" tone="grey" rows={bounced} onOpen={onOpen} extra={(r) => r[F.to]} />
           <Todo title="Send drafted" tone="blue" rows={drafted} onOpen={onOpen} extra={(r) => 'drafted ' + prettyDate(r[F.draftedOn])} />
           <Todo title="Ready to send" tone="blue" rows={ready} onOpen={onOpen} />
           <Todo title="Needs a contact or name" tone="grey" rows={blocked} onOpen={onOpen} extra={(r) => (!hasEmail(r) ? (r[F.form] ? 'form only' : 'no email') : missing(r)[0])} />

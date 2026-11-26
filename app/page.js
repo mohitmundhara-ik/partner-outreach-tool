@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { F, DEFAULT_STATUSES, addDays, prettyDate, fillTemplate } from '@/lib/fields';
 import { segmentOf } from '@/lib/segments';
-import { Icon, Mark } from './ui/common';
+import { Icon, Mark, isReady } from './ui/common';
 import Overview from './ui/Overview';
 import Ecosystem from './ui/Ecosystem';
 import Audience from './ui/Audience';
@@ -13,7 +13,7 @@ import AddPartner from './ui/AddPartner';
 import Results from './ui/Results';
 import Targets from './ui/Targets';
 import Settings from './ui/Settings';
-import { FollowUpModal, MeetModal } from './ui/Modals';
+import { FollowUpModal, MeetModal, BulkSendModal } from './ui/Modals';
 
 let cfgPromise;
 function getCfg() {
@@ -72,7 +72,9 @@ export default function App() {
   const [view, setView] = useState('overview');
   const [seg, setSeg] = useState(null);
   const [preset, setPreset] = useState(null);
-  const [openRow, setOpenRow] = useState(null);
+  const [openRow, setOpenRowRaw] = useState(null);
+  const [navList, setNavList] = useState(null); // { ids, label } the list Previous/Next walks through
+  const [bulk, setBulk] = useState(null); // rows picked for "Send selected"
   const [confirm, setConfirm] = useState(null);
   const [fu, setFu] = useState(null);
   const [meet, setMeet] = useState(null);
@@ -94,6 +96,20 @@ export default function App() {
     if (v === 'ecosystem') setSeg(opts.seg || null);
     if (v === 'partners') setPreset({ ...opts, t: Date.now() });
     window.scrollTo?.(0, 0);
+  };
+
+  // Open a partner. `ids` is the list Previous/Next walks; without it we use the partner's own group.
+  const setOpenRow = (id, ids, label) => {
+    setOpenRowRaw(id);
+    if (id == null) return;
+    if (ids && ids.includes(id)) { setNavList({ ids, label }); return; }
+    setNavList((cur) => {
+      if (cur && cur.ids.includes(id)) return cur;
+      const rows = data?.rows || [];
+      const r = rows.find((x) => x._row === id);
+      if (r && isReady(r)) return { ids: rows.filter(isReady).map((x) => x._row), label: 'ready to send' };
+      return { ids: rows.map((x) => x._row), label: '' };
+    });
   };
 
   const replaceRow = (row) => setData((d) => ({ ...d, rows: d.rows.map((r) => (r._row === row._row ? row : r)) }));
@@ -132,6 +148,9 @@ export default function App() {
       replaceRow(out);
       patchSettings({ sentToday: (data.settings?.sentToday || 0) + 1 });
       setConfirm(null);
+      const ids = navList?.ids || [], i = ids.indexOf(r._row);
+      const nextId = i >= 0 ? ids.slice(i + 1).find((id) => { const x = data.rows.find((y) => y._row === id); return x && isReady(x); }) : null;
+      if (openRow === r._row && nextId) setOpenRowRaw(nextId);
       flash(data?.demo
         ? 'Demo mode: nothing was sent, the row was marked Sent'
         : `Sent to ${r[F.company]}${out._sentFrom === 'draft' ? ' (your Gmail draft)' : ''}. Marked Sent, follow-up ${prettyDate(out[F.followUp] || addDays(data.today, 5))}.`, 'good');
@@ -152,6 +171,14 @@ export default function App() {
       flash(data?.demo ? 'Demo mode: nothing was sent, the row was updated' : `Follow-up ${fu.n} sent to ${r[F.company]}${out._inThread ? ' in the same thread' : ''}`, 'good');
     } catch (e) { flash(e.message, 'bad'); }
     setBusy('');
+  }
+
+  // One send for the bulk modal: returns the updated row or throws.
+  async function sendOne(id) {
+    const out = await api('send', { row: id });
+    replaceRow(out);
+    patchSettings({ sentToday: (data.settings?.sentToday || 0) + 1 });
+    return out;
   }
 
   async function book(payload) {
@@ -232,6 +259,14 @@ export default function App() {
   if (!data) return <main className="center-screen"><div className="loader" /><p className="muted">Loading your partners…</p></main>;
 
   const open = data.rows.find((r) => r._row === openRow);
+  const navIds = navList?.ids || [];
+  const navPos = navIds.indexOf(openRow);
+  const nav = open && navPos >= 0 ? {
+    pos: navPos + 1, total: navIds.length, label: navList.label,
+    prev: navPos > 0 ? () => setOpenRowRaw(navIds[navPos - 1]) : null,
+    next: navPos < navIds.length - 1 ? () => setOpenRowRaw(navIds[navPos + 1]) : null,
+  } : null;
+  const pickSend = (ids) => setBulk(ids.map((id) => data.rows.find((r) => r._row === id)).filter((r) => r && isReady(r) && !r[F.bouncedOn]));
   const statuses = data.statuses?.length ? data.statuses : DEFAULT_STATUSES;
   const hasSegmentCol = (data.fields || []).includes('segment');
   const due = data.rows.filter((r) => r[F.followUp] && r[F.followUp] <= data.today && /^sent/i.test(r[F.status] || '')).length;
@@ -273,23 +308,24 @@ export default function App() {
         </header>
         {data.demo && <div className="banner">Demo mode: made-up sample rows. Nothing is saved, drafted or sent.</div>}
 
-        {view === 'overview' && <Overview data={data} go={go} onOpen={setOpenRow} />}
+        {view === 'overview' && <Overview data={data} go={go} onOpen={setOpenRow} onBulk={pickSend} />}
         {view === 'targets' && <Targets data={data} busy={busy === 'target'} go={go} onPromote={promote} onTarget={updateTarget} onAddTarget={addTarget} />}
         {view === 'results' && <Results data={data} onOpen={setOpenRow} />}
         {view === 'settings' && <Settings data={data} busy={!!busy} onSave={saveSettings} onSaveTemplate={saveTemplate} />}
         {view === 'ecosystem' && <Ecosystem data={data} seg={seg} setSeg={setSeg} onOpen={setOpenRow} />}
         {view === 'audience' && <Audience data={data} go={go} onOpen={setOpenRow} />}
         {view === 'pipeline' && <Pipeline data={data} onOpen={setOpenRow} />}
-        {view === 'partners' && <Partners data={data} statuses={statuses} preset={preset} onOpen={setOpenRow} onStatus={(row, s) => save(row, { [F.status]: s }, 'Status updated in the sheet')} />}
+        {view === 'partners' && <Partners data={data} statuses={statuses} preset={preset} onOpen={setOpenRow} onBulk={pickSend} onStatus={(row, s) => save(row, { [F.status]: s }, 'Status updated in the sheet')} />}
         {view === 'add' && <AddPartner template={data.template} types={[...new Set(data.rows.map((r) => r[F.companyType]).filter(Boolean))].sort()} onAdd={add} busy={busy === 'add'} />}
       </main>
 
       {open && <Editor key={[open._row, open[F.updated], open[F.status], open[F.followUps], open[F.followUp], open[F.deal], open[F.meetingOn], open[F.replyType]].join(':')} row={open} statuses={statuses} today={data.today} busy={busy} hasSegmentCol={hasSegmentCol} linkBase={data.settings?.linkBase}
         loadThread={(row) => api('thread', { row })} onFollowUp={(n) => setFu({ row: open._row, n })} onMeet={() => setMeet(open._row)}
-        onClose={() => setOpenRow(null)} onSave={(f) => save(open._row, f)} onDraft={(f) => draft(open._row, f)} onSend={(f) => askSend(open._row, f)} />}
+        nav={nav} onClose={() => setOpenRow(null)} onSave={(f) => save(open._row, f)} onDraft={(f) => draft(open._row, f)} onSend={(f) => askSend(open._row, f)} />}
       {fu && <FollowUpModal row={data.rows.find((x) => x._row === fu.row)} n={fu.n} template={data.template} today={data.today} busy={busy === 'followup' || busy === 'template'} onCancel={() => setFu(null)} onSend={followUp} onSaveTemplate={saveTemplate} />}
       {meet && <MeetModal row={data.rows.find((x) => x._row === meet)} busy={busy === 'meet'} onCancel={() => setMeet(null)} onBook={book} />}
       {confirm && <ConfirmSend row={confirm} busy={busy === 'send'} onCancel={() => setConfirm(null)} onConfirm={send} />}
+      {bulk && <BulkSendModal rows={bulk} demo={data.demo} cap={data.settings?.cap || 30} used={data.settings?.sentToday || 0} onSendOne={sendOne} onClose={(n) => { setBulk(null); if (n) flash(`${n} email${n > 1 ? 's' : ''} sent and marked Sent in the sheet`, 'good'); }} />}
       {toast && <div className={'toast ' + toast.tone}>{toast.m}</div>}
     </div>
   );

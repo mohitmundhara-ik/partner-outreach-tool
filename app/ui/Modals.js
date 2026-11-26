@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { F, emails, emailHtml, placeholders, prettyDate, addDays, SUGGESTED_FOLLOW_UPS, MAX_FOLLOW_UPS, SECOND_FOLLOW_UP_DAYS } from '@/lib/fields';
 import { segmentOf, bandsOf } from '@/lib/segments';
 import { Modal, Icon, Field } from './common';
@@ -93,6 +93,64 @@ export function MeetModal({ row, busy, onCancel, onBook }) {
         <button className="btn send" disabled={busy || isNaN(start)} onClick={() => onBook({ start: start.toISOString(), minutes, invite, guests, title, brief: invite ? `Partnership conversation: Interview Kickstart and ${row[F.company]}.` : brief })}>
           <Icon name="calendar" size={16} /> {busy ? 'Booking…' : invite ? 'Create event and send invite' : 'Create event'}
         </button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Send several ready partners one after another, after one confirm. Stops on the first error or when you press Stop. */
+export function BulkSendModal({ rows, demo, cap, used, onSendOne, onClose }) {
+  const [phase, setPhase] = useState('confirm'); // confirm | sending | done
+  const [state, setState] = useState({}); // row id -> 'sending' | 'sent' | error text
+  const [stop, setStop] = useState(false);
+  const stopRef = useRef(false);
+  const left = Math.max(0, cap - used);
+  const list = rows.slice(0, demo ? rows.length : left);
+  const over = rows.length - list.length;
+  const sent = Object.values(state).filter((v) => v === 'sent').length;
+
+  async function run() {
+    setPhase('sending');
+    for (const r of list) {
+      if (stopRef.current) break;
+      setState((s) => ({ ...s, [r._row]: 'sending' }));
+      try {
+        await onSendOne(r._row);
+        setState((s) => ({ ...s, [r._row]: 'sent' }));
+      } catch (e) {
+        setState((s) => ({ ...s, [r._row]: e.message || 'Failed' }));
+        break;
+      }
+    }
+    setPhase('done');
+  }
+  const halt = () => { stopRef.current = true; setStop(true); };
+
+  return (
+    <Modal icon="send" title={phase === 'confirm' ? `Send ${list.length} email${list.length === 1 ? '' : 's'} now?` : phase === 'sending' ? `Sending ${sent + 1} of ${list.length}…` : `${sent} sent`} wide onClose={phase === 'sending' ? undefined : () => onClose(sent)}>
+      {phase === 'confirm' && (
+        <p className="muted">Each one goes out from your Gmail, one at a time, exactly as written in its row (a matching Gmail draft is sent if you saved one). They can't be unsent. Each row becomes Sent with a follow-up due in 5 days.</p>
+      )}
+      {over > 0 && phase === 'confirm' && <div className="banner amber">Your daily cap is {cap} and {used} are used today, so only the first {list.length} will be sent. The other {over} stay ready for tomorrow.</div>}
+      <div className="bulk-list">
+        {list.map((r) => {
+          const st = state[r._row];
+          return (
+            <div key={r._row} className={'bulk-row' + (st === 'sent' ? ' ok' : st && st !== 'sending' ? ' bad' : '')}>
+              <span className="strong">{r[F.company]}</span>
+              <span className="muted small">{emails(r[F.to]).join(', ')}</span>
+              <span className="bulk-st small">{!st ? '' : st === 'sending' ? 'Sending…' : st === 'sent' ? 'Sent' : st}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="modal-actions">
+        {phase === 'confirm' && <>
+          <button className="btn" onClick={() => onClose(0)}>Cancel</button>
+          <button className="btn send" onClick={run} disabled={!list.length}><Icon name="send" size={16} /> Send {list.length} email{list.length === 1 ? '' : 's'}</button>
+        </>}
+        {phase === 'sending' && <button className="btn" onClick={halt} disabled={stop}>{stop ? 'Stopping after this one…' : 'Stop'}</button>}
+        {phase === 'done' && <button className="btn primary" onClick={() => onClose(sent)}>Done</button>}
       </div>
     </Modal>
   );

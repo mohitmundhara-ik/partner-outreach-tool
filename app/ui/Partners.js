@@ -2,9 +2,9 @@
 import { useMemo, useState, useEffect } from 'react';
 import { F, emails, prettyDate } from '@/lib/fields';
 import { SEGMENTS, BANDS, segmentOf, bandsOf, isCompetitor } from '@/lib/segments';
-import { hasEmail, missing, isReady, followUpDue, withCurrent, SegTag, Tag, action, stageClass, Score, score, ReplyTag } from './common';
+import { hasEmail, missing, isReady, followUpDue, withCurrent, SegTag, Tag, action, stageClass, Score, score, ReplyTag, Icon } from './common';
 
-export default function Partners({ data, statuses, onOpen, onStatus, preset }) {
+export default function Partners({ data, statuses, onOpen, onStatus, preset, onBulk }) {
   const { rows, today } = data;
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -12,6 +12,7 @@ export default function Partners({ data, statuses, onOpen, onStatus, preset }) {
   const [band, setBand] = useState('');
   const [view, setView] = useState('all');
   const [sort, setSort] = useState('sheet');
+  const [sel, setSel] = useState([]);
   useEffect(() => {
     if (!preset) return;
     setSeg(preset.seg || ''); setBand(preset.band || ''); setView(preset.view || 'all'); setQ(preset.q || '');
@@ -36,11 +37,16 @@ export default function Partners({ data, statuses, onOpen, onStatus, preset }) {
       .sort((a, b) => (sort === 'score' ? b.sc - a.sc : sort === 'name' ? String(a.r[F.company]).localeCompare(b.r[F.company]) : 0))
       .map((x) => x.r);
   }, [rows, q, status, seg, band, view, today, statuses, sort]);
+  const ids = list.map((r) => r._row);
+  const sendable = list.filter((r) => isReady(r) && !r[F.bouncedOn]).map((r) => r._row);
+  const picked = sel.filter((id) => sendable.includes(id));
+  const toggle = (id) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const label = view === 'all' ? '' : { ready: 'ready to send', due: 'follow-up due', replies: 'has a reply', name: 'needs name', form: 'form only', bounced: 'bounced', comp: 'competitor flag' }[view];
 
   return (
     <div className="view">
       <div className="view-head">
-        <div><h1>All partners</h1><p className="muted">{list.length} of {rows.length} shown. Change a status here and it is written to the sheet.</p></div>
+        <div><h1>All partners</h1><p className="muted">{list.length} of {rows.length} shown. Tick partners that are ready to send, then press Send selected. Change a status here and it is written to the sheet.</p></div>
       </div>
       <section className="card">
         <div className="filters">
@@ -71,12 +77,13 @@ export default function Partners({ data, statuses, onOpen, onStatus, preset }) {
         </div>
         <div className="scroll">
           <table className="table">
-            <thead><tr><th>Company</th><th title="Priority score">Score</th><th>Segment</th><th>Status</th><th>Next</th><th>To</th><th>Sent</th><th>Follow-up</th></tr></thead>
+            <thead><tr><th className="pick-col">{sendable.length > 0 && <input type="checkbox" className="pick" title="Select all ready to send" checked={picked.length > 0 && picked.length === sendable.length} onChange={() => setSel(picked.length === sendable.length ? [] : sendable)} />}</th><th>Company</th><th title="Priority score">Score</th><th>Segment</th><th>Status</th><th>Next</th><th>To</th><th>Sent</th><th>Follow-up</th></tr></thead>
             <tbody>
               {list.map((r) => {
                 const a = action(r, today);
                 return (
-                  <tr key={r._row} className={followUpDue(r, today) ? 'due' : ''} onClick={() => onOpen(r._row)}>
+                  <tr key={r._row} className={(followUpDue(r, today) ? 'due' : '') + (picked.includes(r._row) ? ' picked' : '')} onClick={() => onOpen(r._row, ids, label)}>
+                    <td className="pick-col" onClick={(e) => e.stopPropagation()}>{sendable.includes(r._row) && <input type="checkbox" className="pick" checked={picked.includes(r._row)} onChange={() => toggle(r._row)} aria-label={'Select ' + r[F.company]} />}</td>
                     <td><div className="strong">{r[F.company]}</div><div className="muted small clip">{r[F.companyType]}</div></td>
                     <td><Score value={score(r)} /></td>
                     <td><SegTag row={r} /></td>
@@ -96,6 +103,14 @@ export default function Partners({ data, statuses, onOpen, onStatus, preset }) {
           </table>
           {!list.length && <p className="muted">No partners match.</p>}
         </div>
+        {picked.length > 0 && (
+          <div className="bulkbar">
+            <b>{picked.length} selected</b>
+            <button className="link small" onClick={() => setSel([])}>Clear</button>
+            <span className="spacer" />
+            <button className="btn send" onClick={() => onBulk(picked)}><Icon name="send" size={16} /> Send selected ({picked.length})</button>
+          </div>
+        )}
       </section>
     </div>
   );

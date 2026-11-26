@@ -4,7 +4,7 @@ import { F, stage, addDays, prettyDate } from '@/lib/fields';
 import { SEGMENTS, BANDS, segmentOf, bandsOf, gapsOf } from '@/lib/segments';
 import { contacted, engaged, followUpDue, isReady, hasEmail, missing, pct, Meter, Icon, SegTag, Score, score, ReplyTag } from './common';
 
-export default function Overview({ data, go, onOpen }) {
+export default function Overview({ data, go, onOpen, onBulk }) {
   const { rows, today } = data;
   const next = rows.filter((r) => isReady(r) && !r[F.bouncedOn]).map((r) => ({ r, s: score(r) })).sort((a, b) => b.s - a.s).slice(0, 6);
   const gaps = gapsOf(rows).slice(0, 6);
@@ -152,8 +152,8 @@ export default function Overview({ data, go, onOpen }) {
           <Todo title="Send follow-ups" tone="amber" rows={due} onOpen={onOpen} extra={(r) => (Number(r[F.followUps]) ? 'follow-up 2 · ' : 'follow-up 1 · ') + 'sent ' + prettyDate(r[F.sentOn])} />
           <Todo title="Reply and book the call" tone="green" rows={toBook} onOpen={onOpen} extra={(r) => (r[F.replyType] ? r[F.replyType] + ' · ' : '') + 'replied ' + prettyDate(r[F.repliedOn])} />
           <Todo title="Bounced: find a new contact" tone="grey" rows={bounced} onOpen={onOpen} extra={(r) => r[F.to]} />
-          <Todo title="Send drafted" tone="blue" rows={drafted} onOpen={onOpen} extra={(r) => 'drafted ' + prettyDate(r[F.draftedOn])} />
-          <Todo title="Ready to send" tone="blue" rows={ready} onOpen={onOpen} />
+          <Todo title="Send drafted" tone="blue" rows={drafted} onOpen={onOpen} onBulk={onBulk} extra={(r) => 'drafted ' + prettyDate(r[F.draftedOn])} />
+          <Todo title="Ready to send" tone="blue" rows={ready} onOpen={onOpen} onBulk={onBulk} />
           <Todo title="Needs a contact or name" tone="grey" rows={blocked} onOpen={onOpen} extra={(r) => (!hasEmail(r) ? (r[F.form] ? 'form only' : 'no email') : missing(r)[0])} />
         </div>
       </section>
@@ -182,20 +182,36 @@ function Ring({ value }) {
   );
 }
 
-function Todo({ title, tone, rows, onOpen, extra }) {
+function Todo({ title, tone, rows, onOpen, extra, onBulk }) {
   const [all, setAll] = useState(false);
+  const [sel, setSel] = useState([]);
   if (!rows.length) return null;
   const shown = all ? rows : rows.slice(0, 5);
+  const ids = rows.map((r) => r._row);
+  const picked = sel.filter((id) => ids.includes(id));
+  const toggle = (id) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   return (
     <div className={'todo-col td-' + tone}>
-      <div className="todo-head"><span>{title}</span><b>{rows.length}</b></div>
+      <div className="todo-head">
+        <span>{title}</span>
+        <span className="todo-head-r">
+          {onBulk && <button className="link small" onClick={() => { setSel(picked.length === ids.length ? [] : ids); setAll(true); }}>{picked.length === ids.length ? 'Clear' : 'Select all'}</button>}
+          <b>{rows.length}</b>
+        </span>
+      </div>
       {shown.map((r) => (
-        <button key={r._row} className="todo-item" onClick={() => onOpen(r._row)}>
-          <span className="todo-name">{r[F.company]}</span>
-          <span className="todo-sub"><SegTag row={r} /> {extra ? extra(r) : r[F.to]}</span>
-        </button>
+        <div key={r._row} className={'todo-row' + (picked.includes(r._row) ? ' picked' : '')}>
+          {onBulk && <input type="checkbox" className="pick" checked={picked.includes(r._row)} onChange={() => toggle(r._row)} aria-label={'Select ' + r[F.company]} />}
+          <button className="todo-item" onClick={() => onOpen(r._row, ids, title.toLowerCase())}>
+            <span className="todo-name">{r[F.company]}</span>
+            <span className="todo-sub"><SegTag row={r} /> {extra ? extra(r) : r[F.to]}</span>
+          </button>
+        </div>
       ))}
       {rows.length > 5 && <button className="link small" onClick={() => setAll(!all)}>{all ? 'Show less' : `Show all ${rows.length}`}</button>}
+      {onBulk && picked.length > 0 && (
+        <button className="btn send small full" onClick={() => onBulk(picked)}><Icon name="send" size={14} /> Send selected ({picked.length})</button>
+      )}
     </div>
   );
 }

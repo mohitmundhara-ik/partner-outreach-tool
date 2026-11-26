@@ -6,7 +6,7 @@ import { Field, Icon, Pill, Tag, withCurrent, followUpDue, action, ReplyTag, Sco
 
 const EDITABLE = [F.company, F.companyType, F.segment, F.to, F.cc, F.status, F.sentOn, F.subject, F.body, F.reply, F.next, F.notes, F.initiative, F.audience, F.form, F.how, F.suggested, F.deal, F.link, F.leads, F.enrolments, F.contacts, F.followUp];
 
-export default function Editor({ row, statuses, today, busy, hasSegmentCol, linkBase, loadThread, onClose, onSave, onDraft, onSend, onFollowUp, onMeet }) {
+export default function Editor({ row, statuses, today, busy, hasSegmentCol, linkBase, loadThread, onClose, onSave, onDraft, onSend, onFollowUp, onMeet, nav }) {
   const [f, setF] = useState(() => Object.fromEntries(EDITABLE.map((k) => [k, row[k] || ''])));
   const [name, setName] = useState('');
   const [tab, setTab] = useState(() => (stage(row[F.status]) === 'new' && !row[F.sentOn] ? 'email' : 'trail'));
@@ -19,6 +19,17 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
   const canMail = to.length > 0 && !left.length && f[F.subject].trim() && f[F.body].trim();
   const st = stage(row[F.status]);
   const seg = segmentOf({ ...row, ...f });
+  const go = (fn) => { if (!fn) return; if (dirty) onSave(changed); fn(); };
+  useEffect(() => {
+    if (!nav) return undefined;
+    const onKey = (ev) => {
+      const t = ev.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (ev.key === 'ArrowRight' && nav.next) { ev.preventDefault(); go(nav.next); }
+      if (ev.key === 'ArrowLeft' && nav.prev) { ev.preventDefault(); go(nav.prev); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const bands = bandsOf({ ...row, ...f });
   const focus = focusOf({ ...row, ...f });
   const a = action(row, today);
@@ -52,7 +63,16 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
             <h2>{row[F.company]}</h2>
             <p className="muted small">{[row[F.companyType], row[F.route], row[F.verification]].filter(Boolean).join(' · ')}</p>
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+          <div className="panel-nav">
+            {nav && nav.total > 1 && (
+              <>
+                <button className="icon-btn" onClick={() => go(nav.prev)} disabled={!nav.prev} aria-label="Previous partner" title="Previous (←)"><Icon name="chevl" /></button>
+                <span className="muted small">{nav.pos} of {nav.total}{nav.label ? ' · ' + nav.label : ''}</span>
+                <button className="btn small" onClick={() => go(nav.next)} disabled={!nav.next} title="Next (→)">Next <Icon name="arrow" size={14} /></button>
+              </>
+            )}
+            <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+          </div>
         </div>
 
         {isCompetitor(row) && <div className="banner red">Possible competitor. Decide before sending.</div>}

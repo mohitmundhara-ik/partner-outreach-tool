@@ -28,7 +28,7 @@ export default function Pipeline({ data, onOpen }) {
                 {col.map((r) => {
                   const a = action(r, today);
                   return (
-                    <button key={r._row} className={'bcard' + (followUpDue(r, today) ? ' due' : '') + (r[F.bouncedOn] ? ' bounced' : '')} onClick={() => onOpen(r._row)}>
+                    <button key={r._row} className={'bcard' + (followUpDue(r, today) ? ' due' : '') + (r[F.bouncedOn] ? ' bounced' : '')} onClick={() => onOpen(r._row, col.map((x) => x._row), label.toLowerCase())}>
                       <span className="strong">{r[F.company]}</span>
                       <span className="bcard-meta"><SegTag row={r} /> {r[F.sentOn] && <span className="muted small">sent {prettyDate(r[F.sentOn])}</span>}</span>
                       {k !== 'closed' && <Tag tone={a.tone}>{a.label}</Tag>}

@@ -48,3 +48,14 @@ npm install
 cp .env.example .env.local   # fill in values, or leave empty for demo mode
 npm run dev
 ```
+
+## Partner Hub features
+
+- **Command center**: today's sends against a daily goal, reply rate, funnel, 14-day activity, ecosystem coverage, audience reach and a "Do next" list.
+- **Ecosystem**: partners grouped into segments (hiring industry first, then communities, hackathons and dev platforms, newsletters and media, conferences and events, mentors and creators, tech companies). Each segment hub lists its partners, who they reach, and a playbook of ideas to pitch on the call. The segment comes from "Company type"; add a **Segment** column to the sheet to override it for any row.
+- **Audience map**: segment × career band (students and freshers, active job seekers, working engineers, senior ICs and architects, leaders and founders), worked out from the "Audience" column, with offers that work for each band.
+- **Pipeline**: board by stage. **All partners**: searchable table with inline status.
+- **Send now**: sends one partner's email from your Gmail after a confirm step. If a Gmail draft with the same subject and recipient exists, that draft is sent. The row becomes Sent, Sent on is today and the follow-up is set for 5 days later. Rows that are not "Not sent" are never re-sent.
+- **Sync**: checks Gmail for sent emails and replies, updates the sheet, and reloads everything.
+
+After changing `apps-script/Code.gs`, paste it into Apps Script, Save, then Deploy > Manage deployments > Edit > New version > Deploy (the URL stays the same).

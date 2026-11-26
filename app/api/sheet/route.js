@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { call } from '@/lib/backend';
 
 export const dynamic = 'force-dynamic';
-const ALLOWED = ['list', 'update', 'add', 'draft', 'sync'];
+const ALLOWED = ['list', 'update', 'add', 'draft', 'send', 'sync'];
 
 export async function POST(req) {
   try {

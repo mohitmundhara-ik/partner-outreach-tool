@@ -14,7 +14,7 @@ export default function Login() {
   return (
     <main className="login">
       <form onSubmit={submit} className="card">
-        <h1>IK Partner Outreach</h1>
+        <div className="logo">IK</div><h1>Partner Hub</h1>
         <input type="password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
         <button className="btn primary" type="submit">Open</button>
         {err && <p className="error">{err}</p>}

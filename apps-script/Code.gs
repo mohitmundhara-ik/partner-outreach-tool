@@ -6,7 +6,8 @@
  * Anyone within your company if your Workspace only allows that).
  * Set TOKEN below to a long random secret (same value as APPS_SCRIPT_TOKEN in Vercel).
  *
- * It only CREATES DRAFTS and READS mail. There is no code in here that sends an email.
+ * It creates Gmail drafts, reads mail for Sync, and sends an email ONLY when you press
+ * "Send now" in the app and confirm (action "send", one partner at a time).
  * Columns are found by their header names, so you can reorder or add columns freely.
  * It adds a few tracking columns at the far right if they are missing
  * (Drafted on, Follow-up due, Replied on, Call booked on, Last updated).
@@ -22,6 +23,7 @@ var DEFAULT_STATUSES = ['Not sent', 'Sent', 'Replied', 'Call booked', 'Declined'
 /* Canonical field -> test on the lower-cased header. First matching header wins. */
 var MATCH = {
   company: function (h) { return h === 'company' || h === 'company name' || h === 'partner'; },
+  segment: function (h) { return h === 'segment'; },
   companyType: function (h) { return h.indexOf('company type') === 0 || h === 'type' || h === 'category'; },
   status: function (h) { return h.indexOf('status') === 0; },
   sentOn: function (h) { return h.indexOf('sent on') === 0 || h.indexOf('sent date') === 0 || h === 'date sent'; },
@@ -92,6 +94,7 @@ function handle_(req) {
     case 'update': return update_(Number(req.row), req.fields || {});
     case 'add': return add_(req.fields || {});
     case 'draft': return draft_(Number(req.row));
+    case 'send': return send_(Number(req.row), !!req.force);
     case 'sync': return sync_();
     default: throw new Error('Unknown action: ' + req.action);
   }
@@ -264,9 +267,8 @@ function toHtml_(text) {
   return '<div>' + html.replace(/\r?\n/g, '<br>') + '</div>';
 }
 
-function draft_(r) {
-  var sh = sh_(), L = layout_(sh);
-  var o = readRow_(sh, L, r);
+/** Checks the row and returns what the email will be. */
+function compose_(o) {
   var to = emails_(o.to), cc = emails_(o.cc);
   var subject = String(o.subject || '').trim(), body = String(o.body || '');
   if (!to.length) throw new Error('No email address for ' + o.company + '. Use the form link.');
@@ -275,8 +277,39 @@ function draft_(r) {
   if (left) throw new Error('The email still has ' + left[0] + '. Fill it in first.');
   var opts = { htmlBody: toHtml_(body) };
   if (cc.length) opts.cc = cc.join(', ');
-  GmailApp.createDraft(to.join(', '), subject, body, opts);
+  return { to: to, subject: subject, body: body, opts: opts };
+}
+
+function draft_(r) {
+  var sh = sh_(), L = layout_(sh);
+  var m = compose_(readRow_(sh, L, r));
+  GmailApp.createDraft(m.to.join(', '), m.subject, m.body, m.opts);
   return update_(r, { draftedOn: today_() });
+}
+
+/**
+ * Sends one partner's email from your Gmail, then marks the row Sent (Sent on today, follow-up in 5 days).
+ * If you already saved a Gmail draft for it (same subject and recipient), that draft is sent,
+ * so any edits you made in Gmail are kept and no duplicate draft is left behind.
+ */
+function send_(r, force) {
+  var sh = sh_(), L = layout_(sh);
+  var o = readRow_(sh, L, r);
+  var S = S_(statuses_(sh, L));
+  if (!force && o.status && o.status !== S.fresh) throw new Error(o.company + ' is already "' + o.status + '". Not sent again.');
+  var m = compose_(o);
+  var first = m.to[0].toLowerCase();
+  var draft = null;
+  GmailApp.getDrafts().some(function (d) {
+    var msg = d.getMessage();
+    if (msg.getSubject() === m.subject && msg.getTo().toLowerCase().indexOf(first) >= 0) { draft = d; return true; }
+    return false;
+  });
+  if (draft) draft.send();
+  else GmailApp.sendEmail(m.to.join(', '), m.subject, m.body, m.opts);
+  var res = update_(r, { status: S.sent, sentOn: today_() });
+  res._sentFrom = draft ? 'draft' : 'new';
+  return res;
 }
 
 function sync_() {

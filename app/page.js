@@ -255,7 +255,6 @@ export default function App() {
             <Icon name="sync" size={16} /> {busy === 'sync' ? 'Syncing…' : 'Sync now'}
           </button>
           <span>{synced ? 'Last synced ' + synced : ''}{data.settings?.syncOn ? ' · auto every 15 min' : ''}</span>
-          <span>{data.settings?.sentToday || 0} of {data.settings?.cap || 30} sends used today</span>
           <span>Google Sheet + Gmail</span>
         </div>
       </aside>
@@ -271,7 +270,7 @@ export default function App() {
         </header>
         {data.demo && <div className="banner">Demo mode: made-up sample rows. Nothing is saved, drafted or sent.</div>}
 
-        {view === 'overview' && <Overview data={data} go={go} onOpen={setOpenRow} onGoal={(g) => g !== data.settings?.goal && !data.demo && saveSettings({ goal: g })} />}
+        {view === 'overview' && <Overview data={data} go={go} onOpen={setOpenRow} />}
         {view === 'targets' && <Targets data={data} busy={busy === 'target'} go={go} onPromote={promote} onTarget={updateTarget} onAddTarget={addTarget} />}
         {view === 'results' && <Results data={data} onOpen={setOpenRow} />}
         {view === 'settings' && <Settings data={data} busy={!!busy} onSave={saveSettings} onSaveTemplate={saveTemplate} />}

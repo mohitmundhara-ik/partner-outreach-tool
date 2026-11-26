@@ -7,7 +7,6 @@ export default function Settings({ data, busy, onSave, onSaveTemplate }) {
   const s = data.settings || {};
   const t = data.template || {};
   const [cap, setCap] = useState(s.cap || 30);
-  const [goal, setGoal] = useState(s.goal || 10);
   const [linkBase, setLinkBase] = useState(s.linkBase || 'https://interviewkickstart.com/in');
   const [f1, setF1] = useState(t.followUp1 || SUGGESTED_FOLLOW_UPS[0]);
   const [f2, setF2] = useState(t.followUp2 || SUGGESTED_FOLLOW_UPS[1]);
@@ -41,16 +40,13 @@ export default function Settings({ data, busy, onSave, onSaveTemplate }) {
             <div><b>{s.sentToday || 0}</b> of {s.cap || 30} sent from the hub today</div>
             <div className="meter"><div className="meter-fill" style={{ width: `${Math.min(100, ((s.sentToday || 0) / (s.cap || 30)) * 100)}%` }} /></div>
           </div>
-          <div className="two">
-            <Field label="Daily send cap" hint="Keeps cold outreach at a safe pace for your domain. 20 to 30 is a good range.">
-              <input type="number" min="1" max="200" value={cap} onChange={(e) => setCap(e.target.value)} />
-            </Field>
-            <Field label="Daily goal (first emails)"><input type="number" min="1" value={goal} onChange={(e) => setGoal(e.target.value)} /></Field>
-          </div>
+          <Field label="Daily send cap" hint="Keeps cold outreach at a safe pace for your domain. 20 to 30 is a good range.">
+            <input type="number" min="1" max="200" value={cap} onChange={(e) => setCap(e.target.value)} />
+          </Field>
           <Field label="Tracking link base" hint="Partner links are this address plus utm_source=partner-name, utm_medium=partner, utm_campaign=partner_hub.">
             <input value={linkBase} onChange={(e) => setLinkBase(e.target.value)} />
           </Field>
-          <button className="btn primary" disabled={busy} onClick={() => onSave({ cap: Number(cap) || 30, goal: Number(goal) || 10, linkBase })}>Save</button>
+          <button className="btn primary" disabled={busy} onClick={() => onSave({ cap: Number(cap) || 30, linkBase })}>Save</button>
         </section>
       </div>
 

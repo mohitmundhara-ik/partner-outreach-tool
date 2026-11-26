@@ -1,24 +1,16 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { F, stage, addDays, prettyDate } from '@/lib/fields';
 import { SEGMENTS, BANDS, segmentOf, bandsOf, gapsOf } from '@/lib/segments';
 import { contacted, engaged, followUpDue, isReady, hasEmail, missing, pct, Meter, Icon, SegTag, Score, score, ReplyTag } from './common';
 
-export default function Overview({ data, go, onOpen, onGoal }) {
+export default function Overview({ data, go, onOpen }) {
   const { rows, today } = data;
-  const [goal, setGoal] = useState(data.settings?.goal || 10);
-  useEffect(() => {
-    if (data.settings?.goal) return;
-    try { const g = Number(localStorage.getItem('ik_goal')); if (g) setGoal(g); } catch {}
-  }, [data.settings?.goal]);
-  const saveGoal = (g) => { setGoal(g); try { localStorage.setItem('ik_goal', String(g)); } catch {} };
-  const cap = data.settings?.cap || 30, usedToday = data.settings?.sentToday || 0;
   const next = rows.filter((r) => isReady(r) && !r[F.bouncedOn]).map((r) => ({ r, s: score(r) })).sort((a, b) => b.s - a.s).slice(0, 6);
   const gaps = gapsOf(rows).slice(0, 6);
   const bounced = rows.filter((r) => r[F.bouncedOn] && ['new', 'sent'].includes(stage(r[F.status])));
 
   const on = (field, day) => rows.filter((r) => r[field] === day).length;
-  const sentToday = on(F.sentOn, today);
   const nContacted = rows.filter(contacted).length;
   const nReplied = rows.filter(engaged).length;
   const nCalls = rows.filter((r) => stage(r[F.status]) === 'call').length;
@@ -31,9 +23,7 @@ export default function Overview({ data, go, onOpen, onGoal }) {
 
   const days = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13));
   const series = days.map((d) => ({ d, sent: on(F.sentOn, d), replies: on(F.repliedOn, d), drafted: on(F.draftedOn, d) }));
-  const peak = Math.max(Math.ceil(goal * 1.15), ...series.map((s) => Math.max(s.sent, s.replies, s.drafted)), 1);
-  const week = series.slice(-7).reduce((a, s) => a + s.sent, 0);
-  const streak = (() => { let n = 0; for (let i = series.length - 1; i >= 0; i--) { if (series[i].sent > 0) n++; else if (i !== series.length - 1) break; } return n; })();
+  const peak = Math.max(...series.map((s) => Math.max(s.sent, s.replies, s.drafted)), 1);
 
   const funnel = [
     ['Partners', rows.length],
@@ -55,18 +45,11 @@ export default function Overview({ data, go, onOpen, onGoal }) {
       <section className="hero">
         <div className="hero-main">
           <div className="eyebrow">Today, {prettyDate(today)}</div>
-          <h1 className="hero-title">{sentToday} of {goal} sent today</h1>
+          <h1 className="hero-title">Partner outreach</h1>
           <p className="hero-sub">
             {due.length ? `${due.length} follow-up${due.length > 1 ? 's' : ''} due. ` : ''}
             {ready.length + drafted.length} ready to send. {toBook.length ? `${toBook.length} repl${toBook.length > 1 ? 'ies' : 'y'} waiting for a call.` : ''}
           </p>
-          <div className="hero-bar"><div style={{ width: `${Math.min(100, pct(sentToday, goal))}%` }} /></div>
-          <div className="hero-meta">
-            <span>Daily goal <input type="number" min="1" value={goal} onChange={(e) => saveGoal(Number(e.target.value) || 1)} onBlur={() => onGoal && onGoal(goal)} /></span>
-            <span>{usedToday} of {cap} sends used today</span>
-            <span>{week} sent in the last 7 days</span>
-            {streak > 1 && <span>{streak}-day sending streak</span>}
-          </div>
         </div>
         <div className="hero-ring">
           <Ring value={pct(nReplied, nContacted)} />
@@ -86,7 +69,6 @@ export default function Overview({ data, go, onOpen, onGoal }) {
         <section className="card">
           <div className="card-head"><h2>Activity, last 14 days</h2><div className="legend"><i className="lg-sent" />Sent <i className="lg-rep" />Replies <i className="lg-dr" />Drafted</div></div>
           <div className="chart">
-            <div className="goal-line" style={{ '--g': goal / peak }}><span>goal {goal}</span></div>
             {series.map((s) => (
               <div key={s.d} className={'col' + (s.d === today ? ' now' : '')} title={`${prettyDate(s.d)}: ${s.sent} sent, ${s.replies} replies, ${s.drafted} drafted`}>
                 <div className="bars">

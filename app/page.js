@@ -321,7 +321,9 @@ function Editor({ row, statuses, today, busy, onClose, onSave, onDraft }) {
 
   function putName() {
     if (!name.trim()) return;
-    setF((x) => ({ ...x, [F.body]: x[F.body].split('[Name]').join(name.trim()), [F.subject]: x[F.subject].split('[Name]').join(name.trim()) }));
+    const n = name.trim();
+    const fix = (t) => t.split('[Name]').join(n).replace(/^Hi,/, 'Hi ' + n + ',');
+    setF((x) => ({ ...x, [F.body]: fix(x[F.body]), [F.subject]: x[F.subject].split('[Name]').join(n) }));
   }
 
   async function copy() {
@@ -360,10 +362,10 @@ function Editor({ row, statuses, today, busy, onClose, onSave, onDraft }) {
         </p>
 
         <h3>Email</h3>
-        {left.includes('[Name]') && (
+        {(left.includes('[Name]') || /^Hi,/.test(f[F.body])) && (
           <div className="namebar">
             <input placeholder={row[F.suggested] ? 'Suggested: ' + row[F.suggested].slice(0, 60) : 'Contact first name'} value={name} onChange={(e) => setName(e.target.value)} />
-            <button className="btn" onClick={putName}>Put name in email</button>
+            <button className="btn" onClick={putName}>{left.includes('[Name]') ? 'Put name in email' : 'Greet by name'}</button>
           </div>
         )}
         <Field label="Subject"><input value={f[F.subject]} onChange={set(F.subject)} /></Field>

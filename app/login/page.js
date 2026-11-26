@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { Mark } from '../ui/common';
 
 export default function Login() {
   const [pw, setPw] = useState('');
@@ -14,7 +15,7 @@ export default function Login() {
   return (
     <main className="login">
       <form onSubmit={submit} className="card">
-        <div className="logo">IK</div><h1>Partner Hub</h1>
+        <div className="logo"><Mark /></div><h1>Handshake</h1><p className="muted small">by IK Team</p>
         <input type="password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
         <button className="btn primary" type="submit">Open</button>
         {err && <p className="error">{err}</p>}

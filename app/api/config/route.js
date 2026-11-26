@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const url = process.env.APPS_SCRIPT_URL || '';
   const browser = process.env.APPS_SCRIPT_MODE === 'browser' || (process.env.APPS_SCRIPT_MODE !== 'server' && url.includes('/a/macros/'));
-  if (!url || !browser) return NextResponse.json({ browser: false });
-  return NextResponse.json({ browser: true, url, token: process.env.APPS_SCRIPT_TOKEN || '' });
+  const sheetUrl = process.env.SHEET_URL || '';
+  if (!url || !browser) return NextResponse.json({ browser: false, sheetUrl });
+  return NextResponse.json({ browser: true, url, token: process.env.APPS_SCRIPT_TOKEN || '', sheetUrl });
 }

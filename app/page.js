@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { F, DEFAULT_STATUSES, addDays, prettyDate, fillTemplate } from '@/lib/fields';
 import { segmentOf } from '@/lib/segments';
-import { Icon } from './ui/common';
+import { Icon, Mark } from './ui/common';
 import Overview from './ui/Overview';
 import Ecosystem from './ui/Ecosystem';
 import Audience from './ui/Audience';
@@ -78,6 +78,8 @@ export default function App() {
   const [meet, setMeet] = useState(null);
   const [busy, setBusy] = useState('');
   const [synced, setSynced] = useState('');
+  const [sheetUrl, setSheetUrl] = useState('');
+  useEffect(() => { getCfg().then((c) => setSheetUrl(c.sheetUrl || '')).catch(() => {}); }, []);
   const [navOpen, setNavOpen] = useState(false);
 
   const flash = (m, tone = '') => { setToast({ m, tone }); setTimeout(() => setToast(null), 5000); };
@@ -238,8 +240,8 @@ export default function App() {
     <div className={'shell' + (navOpen ? ' nav-open' : '')}>
       <aside className="side">
         <div className="brand">
-          <div className="logo">IK</div>
-          <div><b>Partner Hub</b><span>Interview Kickstart</span></div>
+          <div className="logo"><Mark /></div>
+          <div><b>Handshake</b><span>by IK Team</span></div>
         </div>
         <nav>
           {NAV.map(([k, l]) => (
@@ -255,7 +257,7 @@ export default function App() {
             <Icon name="sync" size={16} /> {busy === 'sync' ? 'Syncing…' : 'Sync now'}
           </button>
           <span>{synced ? 'Last synced ' + synced : ''}{data.settings?.syncOn ? ' · auto every 15 min' : ''}</span>
-          <span>Google Sheet + Gmail</span>
+          {sheetUrl ? <a className="side-link" href={sheetUrl} target="_blank" rel="noreferrer">Open Google Sheet ↗</a> : <span>Google Sheet + Gmail</span>}
         </div>
       </aside>
       <div className="scrim" onClick={() => setNavOpen(false)} />
@@ -265,6 +267,7 @@ export default function App() {
           <button className="icon-btn menu" onClick={() => setNavOpen(true)} aria-label="Menu"><Icon name="menu" /></button>
           <div className="crumb">{NAV.find((n) => n[0] === view)?.[1]}</div>
           <span className="spacer" />
+          {sheetUrl && <a className="btn ghost sheet-link" href={sheetUrl} target="_blank" rel="noreferrer"><Icon name="sheet" size={16} /> Open sheet</a>}
           <button className="btn ghost" onClick={() => go('add')}><Icon name="add" size={16} /> Add</button>
           <button className="btn sync-top" onClick={sync} disabled={!!busy}><Icon name="sync" size={16} /> {busy === 'sync' ? 'Syncing…' : 'Sync'}</button>
         </header>

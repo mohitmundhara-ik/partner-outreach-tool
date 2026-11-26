@@ -1,5 +1,5 @@
 /**
- * IK Partner Hub: backend for the web app.
+ * Handshake by IK Team: backend for the web app.
  *
  * Paste into Extensions > Apps Script of your outreach Google Sheet, then
  * Deploy > New deployment > Web app (Execute as: Me; Who has access: Anyone, or
@@ -102,7 +102,7 @@ function doPost(e) {
  */
 function doGet(e) {
   var p = (e && e.parameter) || {};
-  if (!p.cb) return ContentService.createTextOutput('IK Partner Hub backend is running.');
+  if (!p.cb) return ContentService.createTextOutput('Handshake backend is running.');
   var cb = String(p.cb).replace(/[^\w$]/g, '');
   var out = run_(p.q || '{}');
   return ContentService.createTextOutput(cb + '(' + JSON.stringify(out) + ');')
@@ -660,10 +660,10 @@ function morningBrief() {
     '<h3>New replies (' + newReplies.length + ')</h3>' + li(newReplies, function (r) { return r.replyType || 'Reply'; }) +
     '<h3>Follow-ups due (' + due.length + ')</h3>' + li(due, function (r) { return 'sent ' + r.sentOn; }) +
     (bounced.length ? '<h3>Bounced (' + bounced.length + ')</h3>' + li(bounced, function (r) { return r.to; }) : '') +
-    (s.hubUrl ? '<p style="margin-top:20px"><a href="' + s.hubUrl + '" style="background:#4f46e5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Open Partner Hub</a></p>' : '') +
+    (s.hubUrl ? '<p style="margin-top:20px"><a href="' + s.hubUrl + '" style="background:#2c5491;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Open Handshake</a></p>' : '') +
     '</div>';
-  var subject = 'Partner Hub: ' + due.length + ' follow-ups, ' + newReplies.length + ' new replies, ' + calls.length + ' calls today';
-  GmailApp.sendEmail(s.me, subject, 'Open the Partner Hub for details.', { htmlBody: html, name: 'IK Partner Hub' });
+  var subject = 'Handshake: ' + due.length + ' follow-ups, ' + newReplies.length + ' new replies, ' + calls.length + ' calls today';
+  GmailApp.sendEmail(s.me, subject, 'Open Handshake for details.', { htmlBody: html, name: 'Handshake by IK Team' });
 }
 
 /** Run once from the editor after pasting a new version, to approve Gmail, Calendar, Sheet and trigger access. */

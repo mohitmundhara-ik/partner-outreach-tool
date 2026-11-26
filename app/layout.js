@@ -1,6 +1,6 @@
 import './globals.css';
 
-export const metadata = { title: 'IK Partner Hub', description: 'Partner ecosystem, outreach, Gmail drafts and sending, daily progress' };
+export const metadata = { title: 'Handshake by IK Team', description: 'Partner ecosystem, outreach, Gmail drafts and sending, daily progress' };
 
 export default function RootLayout({ children }) {
   return (

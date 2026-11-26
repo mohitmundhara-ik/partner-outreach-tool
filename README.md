@@ -1,4 +1,4 @@
-# IK Partner Outreach
+# Handshake by IK Team
 
 A small web app on top of your outreach Google Sheet:
 
@@ -49,7 +49,7 @@ cp .env.example .env.local   # fill in values, or leave empty for demo mode
 npm run dev
 ```
 
-## Partner Hub features
+## Features
 
 - **Command center**: today's sends against a daily goal, reply rate, funnel, 14-day activity, ecosystem coverage, audience reach and a "Do next" list.
 - **Ecosystem**: partners grouped into segments (hiring industry first, then communities, hackathons and dev platforms, newsletters and media, conferences and events, mentors and creators, tech companies). Each segment hub lists its partners, who they reach, and a playbook of ideas to pitch on the call. The segment comes from "Company type"; add a **Segment** column to the sheet to override it for any row.

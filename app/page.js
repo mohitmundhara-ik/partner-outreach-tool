@@ -238,7 +238,7 @@ export default function App() {
     try {
       const r = await api('sync');
       await load();
-      flash(`Synced: ${r.sent} newly sent, ${r.replied} new replies${r.bounced ? `, ${r.bounced} bounced` : ''}${r.ooo ? `, ${r.ooo} out of office` : ''}`, 'good');
+      flash(`Synced: ${r.sent} newly sent, ${r.replied} new replies${r.bounced ? `, ${r.bounced} bounced` : ''}${r.ooo ? `, ${r.ooo} out of office` : ''}${r.labelled ? `, ${r.labelled} threads labelled` : ''}`, 'good');
     } catch (e) { flash(e.message, 'bad'); }
     setBusy('');
   }

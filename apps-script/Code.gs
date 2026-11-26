@@ -22,6 +22,7 @@ var TAB = 'Emails';
 var MASTER_TAB = 'Master email';
 var TARGETS_TAB = 'Targets';
 var LABEL = 'Partnership Outreach'; // Gmail label put on every outreach thread
+var SUBJECT_TAIL = 'Interview Kickstart: A Partnership Idea'; // every outreach subject ends with this
 var FOLLOW_UP_DAYS = 5;          // first follow-up due this many days after the first email
 var SECOND_FOLLOW_UP_DAYS = 7;   // second follow-up due this many days after the first follow-up
 var MAX_FOLLOW_UPS = 2;
@@ -417,6 +418,28 @@ function sentThread_(o) {
   return found.length ? found[0] : null;
 }
 
+/**
+ * Puts the Partnership Outreach label on every outreach thread you have sent, however it was sent
+ * (from the hub, from a Gmail draft, or by hand), including follow-ups and replies in that thread.
+ * Finds them by the fixed subject line, so rows in any status are covered.
+ */
+function labelAll_() {
+  var l = GmailApp.getUserLabelByName(LABEL) || GmailApp.createLabel(LABEL);
+  var q = 'in:sent subject:"' + SUBJECT_TAIL + '" -label:' + LABEL.toLowerCase().replace(/\s+/g, '-');
+  var total = 0;
+  for (var i = 0; i < 10; i++) {
+    var found = GmailApp.search(q, 0, 100);
+    if (!found.length) break;
+    l.addToThreads(found);
+    total += found.length;
+    if (found.length < 100) break;
+  }
+  return total;
+}
+
+/** Run this from the editor to label all outreach threads right away. */
+function labelOutreachThreads() { Logger.log('Labelled ' + labelAll_() + ' threads'); }
+
 function label_(thread) {
   if (!thread) return;
   try {
@@ -541,7 +564,7 @@ function sync_() {
   var S = S_(statuses_(sh, L));
   var me = [Session.getEffectiveUser().getEmail()].concat(GmailApp.getAliases()).map(function (x) { return x.toLowerCase(); });
   var isMe = function (f) { f = f.toLowerCase(); return me.some(function (m) { return m && f.indexOf(m) >= 0; }); };
-  var res = { sent: 0, replied: 0, bounced: 0, ooo: 0 };
+  var res = { sent: 0, replied: 0, bounced: 0, ooo: 0, labelled: labelAll_() };
   for (var r = 2; r <= n; r++) {
     var o = readRow_(sh, L, r);
     if (!o.company || (o.status !== S.fresh && o.status !== S.sent && o.status !== '')) continue;

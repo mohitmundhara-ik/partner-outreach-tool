@@ -331,7 +331,7 @@ export default function App() {
         {view === 'ecosystem' && <Ecosystem data={data} seg={seg} setSeg={setSeg} onOpen={setOpenRow} />}
         {view === 'audience' && <Audience data={data} go={go} onOpen={setOpenRow} />}
         {view === 'pipeline' && <Pipeline data={data} onOpen={setOpenRow} />}
-        {view === 'partners' && <Partners data={data} statuses={statuses} preset={preset} onOpen={setOpenRow} onBulk={pickSend} onStatus={(row, s) => save(row, { [F.status]: s }, 'Status updated in the sheet')} />}
+        {view === 'partners' && <Partners data={data} statuses={statuses} sheetUrl={sheetUrl} preset={preset} onOpen={setOpenRow} onBulk={pickSend} onStatus={(row, s) => save(row, { [F.status]: s }, 'Status updated in the sheet')} />}
         {view === 'add' && <AddPartner template={data.template} types={[...new Set(data.rows.map((r) => r[F.companyType]).filter(Boolean))].sort()} onAdd={add} busy={busy === 'add'} />}
       </main>
 

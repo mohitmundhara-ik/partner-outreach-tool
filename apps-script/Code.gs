@@ -2,7 +2,8 @@
  * IK Partner Outreach: backend for the web app.
  *
  * Paste into Extensions > Apps Script of your outreach Google Sheet, then
- * Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone).
+ * Deploy > New deployment > Web app (Execute as: Me; Who has access: Anyone, or
+ * Anyone within your company if your Workspace only allows that).
  * Set TOKEN below to a long random secret (same value as APPS_SCRIPT_TOKEN in Vercel).
  *
  * It only CREATES DRAFTS and READS mail. There is no code in here that sends an email.
@@ -52,21 +53,37 @@ var EXTRA = { draftedOn: 'Drafted on', followUp: 'Follow-up due', repliedOn: 'Re
 /* ---------------- HTTP ---------------- */
 
 function doPost(e) {
-  var out;
+  return json_(run_(e && e.postData ? e.postData.contents : '{}'));
+}
+
+/**
+ * GET is used by the web app from your browser (JSONP), because your Google Workspace only allows
+ * "Anyone within Interview Kickstart". Your browser's Google sign-in proves you are in the company,
+ * and the secret token is still checked on every call.
+ */
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  if (!p.cb) return ContentService.createTextOutput('IK Outreach backend is running.');
+  var cb = String(p.cb).replace(/[^\w$]/g, '');
+  var out = run_(p.q || '{}');
+  return ContentService.createTextOutput(cb + '(' + JSON.stringify(out) + ');')
+    .setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
+
+function run_(contents) {
   try {
-    var req = JSON.parse(e.postData.contents || '{}');
+    var req = JSON.parse(contents || '{}');
     if (req.token !== TOKEN) throw new Error('Unauthorized');
     var lock = LockService.getDocumentLock();
     lock.waitLock(30000);
-    try { out = { ok: true, data: handle_(req) }; } finally { lock.releaseLock(); }
+    try { return { ok: true, data: handle_(req) }; } finally { lock.releaseLock(); }
   } catch (err) {
-    out = { ok: false, error: String(err && err.message || err) };
+    return { ok: false, error: String(err && err.message || err) };
   }
-  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
-function doGet() {
-  return ContentService.createTextOutput('IK Outreach backend is running.');
+function json_(out) {
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function handle_(req) {

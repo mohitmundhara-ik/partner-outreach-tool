@@ -2,7 +2,34 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { F, DEFAULT_STATUSES, stage, emailHtml, emails, placeholders, fillTemplate, addDays, prettyDate } from '@/lib/fields';
 
+let cfgPromise;
+function getCfg() {
+  cfgPromise ||= fetch('/api/config').then((r) => {
+    if (r.status === 401) { window.location.href = '/login'; throw new Error('Please sign in'); }
+    return r.json();
+  });
+  return cfgPromise;
+}
+
+const NO_GOOGLE = 'Could not reach your Google Sheet. Make sure this browser is signed in to your interviewkickstart.com Google account, then reload.';
+
+// Calls the Apps Script straight from the browser (JSONP), so your company Google sign-in is used.
+function jsonp(url, payload) {
+  return new Promise((resolve, reject) => {
+    const cb = '__ik' + Date.now() + Math.random().toString(36).slice(2);
+    const s = document.createElement('script');
+    const done = () => { clearTimeout(timer); delete window[cb]; s.remove(); };
+    const timer = setTimeout(() => { done(); reject(new Error(NO_GOOGLE)); }, 45000);
+    window[cb] = (d) => { done(); d && d.ok ? resolve(d.data) : reject(new Error((d && d.error) || 'Backend error')); };
+    s.onerror = () => { done(); reject(new Error(NO_GOOGLE)); };
+    s.src = url + (url.includes('?') ? '&' : '?') + 'cb=' + cb + '&q=' + encodeURIComponent(JSON.stringify(payload));
+    document.body.appendChild(s);
+  });
+}
+
 async function api(action, payload = {}) {
+  const cfg = await getCfg();
+  if (cfg.browser) return jsonp(cfg.url, { token: cfg.token, action, ...payload });
   const r = await fetch('/api/sheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...payload }) });
   if (r.status === 401) { window.location.href = '/login'; throw new Error('Please sign in'); }
   const j = await r.json();

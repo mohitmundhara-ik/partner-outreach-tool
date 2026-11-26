@@ -1,6 +1,6 @@
 'use client';
-import { useRef, useState } from 'react';
-import { F, emails, emailHtml, placeholders, prettyDate, addDays, SUGGESTED_FOLLOW_UPS, MAX_FOLLOW_UPS, SECOND_FOLLOW_UP_DAYS } from '@/lib/fields';
+import { useEffect, useRef, useState } from 'react';
+import { F, emails, emailHtml, placeholders, prettyDate, addDays, SUGGESTED_FOLLOW_UPS, MAX_FOLLOW_UPS, SECOND_FOLLOW_UP_DAYS, suggestedReply } from '@/lib/fields';
 import { segmentOf, bandsOf } from '@/lib/segments';
 import { Modal, Icon, Field } from './common';
 
@@ -34,6 +34,58 @@ export function FollowUpModal({ row, n, template, busy, today, onCancel, onSend,
         <span className="spacer" />
         <button className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
         <button className="btn send" onClick={() => onSend(text)} disabled={busy || !text.trim() || left.length > 0}><Icon name="reply" size={16} /> {busy ? 'Sending…' : 'Send follow-up'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Write back to a partner in their Gmail thread (reply-all to the latest message).
+ * Shows who it goes to first, then saves it as a Gmail draft or sends it after a second confirm.
+ */
+export function ReplyModal({ row, busy, loadPreview, onCancel, onReply }) {
+  const [text, setText] = useState(() => row[F.replyDraft] || suggestedReply(row));
+  const [preview, setPreview] = useState(false);
+  const [who, setWho] = useState(null);
+  const [whoErr, setWhoErr] = useState('');
+  const [sure, setSure] = useState(false);
+  useEffect(() => {
+    let live = true;
+    loadPreview(row._row).then((w) => live && setWho(w)).catch((e) => live && setWhoErr(e.message));
+    return () => { live = false; };
+  }, [row._row]);
+  const left = placeholders(text);
+  const ready = who && !whoErr && text.trim() && !left.length;
+  const rcpt = who ? [...(who.to || []), ...(who.cc || [])].join(', ') : '';
+  return (
+    <Modal icon="reply" title={`Reply to ${row[F.company]}`} onClose={onCancel} wide>
+      <p className="muted">Goes as a reply-all to their latest message, in the same Gmail thread, from your Gmail. Save it as a draft to finish it in Gmail, or send it from here.</p>
+      {whoErr ? <div className="banner red">{whoErr}</div> : (
+        <dl className="kv">
+          <dt>Thread</dt><dd>{who ? <a href={who.url} target="_blank" rel="noreferrer">{who.subject}</a> : 'Finding the thread…'}</dd>
+          {who && <><dt>Latest from</dt><dd>{who.lastFrom} · {prettyDate(String(who.lastDate || '').slice(0, 10))}</dd></>}
+          {who && <><dt>To</dt><dd>{(who.to || []).join(', ') || '(nobody)'}</dd></>}
+          {who && who.cc?.length > 0 && <><dt>Cc</dt><dd>{who.cc.join(', ')}</dd></>}
+          {row[F.lastReplySent] && <><dt>Last reply sent</dt><dd>{prettyDate(row[F.lastReplySent])}</dd></>}
+        </dl>
+      )}
+      {row[F.reply] && <p className="small"><b>What they said:</b> {row[F.reply]}</p>}
+      <div className="seg-toggle" style={{ marginBottom: 8 }}>
+        <button className={!preview ? 'on' : ''} onClick={() => setPreview(false)}>Edit</button>
+        <button className={preview ? 'on' : ''} onClick={() => setPreview(true)}>Preview</button>
+      </div>
+      {preview ? <div className="mailbox"><div className="mail" dangerouslySetInnerHTML={{ __html: emailHtml(text, row[F.company]) }} /></div> : <textarea rows={10} value={text} onChange={(e) => { setText(e.target.value); setSure(false); }} />}
+      {left.length > 0 && <p className="warn-text small">Fill in {left.join(', ')} first.</p>}
+      {sure && <div className="banner">Send this reply to {rcpt} now? It can't be unsent.</div>}
+      <div className="modal-actions">
+        <button className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
+        <span className="spacer" />
+        <button className="btn" disabled={busy || !ready} onClick={() => onReply(text, 'draft')}><Icon name="draft" size={16} /> {busy === 'draft' ? 'Saving…' : 'Save as Gmail draft'}</button>
+        {!sure ? (
+          <button className="btn send" disabled={busy || !ready} onClick={() => setSure(true)}><Icon name="reply" size={16} /> Send reply</button>
+        ) : (
+          <button className="btn send" disabled={busy || !ready} onClick={() => onReply(text, 'send')}><Icon name="send" size={16} /> {busy === 'send' ? 'Sending…' : 'Yes, send it'}</button>
+        )}
       </div>
     </Modal>
   );

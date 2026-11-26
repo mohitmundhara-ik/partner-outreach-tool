@@ -80,12 +80,15 @@ var MATCH = {
   link: function (h) { return h === 'tracking link'; },
   leads: function (h) { return h === 'leads'; },
   enrolments: function (h) { return h === 'enrolments' || h === 'enrollments'; },
-  contacts: function (h) { return h === 'other contacts'; }
+  contacts: function (h) { return h === 'other contacts'; },
+  replyDraft: function (h) { return h === 'reply draft'; },
+  lastReplySent: function (h) { return h === 'last reply sent'; }
 };
 var EXTRA = {
   draftedOn: 'Drafted on', followUp: 'Follow-up due', repliedOn: 'Replied on', meetingOn: 'Call booked on', updated: 'Last updated',
   followUps: 'Follow-ups sent', lastFollowUp: 'Last follow-up on', bouncedOn: 'Bounced on', replyType: 'Reply type', threadId: 'Gmail thread',
-  deal: 'Partnership stage', link: 'Tracking link', leads: 'Leads', enrolments: 'Enrolments', contacts: 'Other contacts'
+  deal: 'Partnership stage', link: 'Tracking link', leads: 'Leads', enrolments: 'Enrolments', contacts: 'Other contacts',
+  replyDraft: 'Reply draft', lastReplySent: 'Last reply sent'
 };
 
 var TARGET_MATCH = {
@@ -145,6 +148,7 @@ function handle_(req) {
     case 'draft': return draft_(Number(req.row));
     case 'send': return send_(Number(req.row), !!req.force);
     case 'followup': return followup_(Number(req.row), String(req.text || ''));
+    case 'reply': return reply_(Number(req.row), String(req.text || ''), String(req.mode || 'preview'));
     case 'thread': return thread_(Number(req.row));
     case 'meet': return meet_(Number(req.row), req);
     case 'sync': return sync_();
@@ -392,6 +396,7 @@ function toHtml_(text, company) {
 
 /** Checks the row and returns what the email will be. */
 function compose_(o) {
+  skipCheck_(o);
   var to = emails_(o.to), cc = emails_(o.cc);
   var subject = String(o.subject || '').trim(), body = String(o.body || '');
   if (!to.length) throw new Error('No email address for ' + o.company + '. Use the form link.');
@@ -502,6 +507,7 @@ function followup_(r, text) {
   var sh = sh_(), L = layout_(sh);
   var o = readRow_(sh, L, r);
   var S = S_(statuses_(sh, L));
+  skipCheck_(o);
   if (o.status !== S.sent) throw new Error('Follow-ups go only to partners in "' + S.sent + '" who have not replied.');
   if (o.bouncedOn) throw new Error('The first email bounced. Find a new contact first.');
   var n = (Number(o.followUps) || 0) + 1;
@@ -537,6 +543,79 @@ function followup_(r, text) {
     threadId: thread ? thread.getId() : o.threadId
   });
   res._inThread = sentInThread;
+  return res;
+}
+
+/** Rows marked Skip (competitors, conflicts, duplicates) are kept for reference and can never be emailed. */
+function skipCheck_(o) {
+  if (/^skip/i.test(String(o.status || '')) || /^skip/i.test(String(o.notes || '')))
+    throw new Error(o.company + ' is marked Skip (' + String(o.notes || 'see Notes').slice(0, 120) + '). It is never emailed.');
+}
+
+/* ---------------- Writing back to a partner ---------------- */
+
+function myAddrs_() {
+  return [Session.getEffectiveUser().getEmail()].concat(GmailApp.getAliases()).map(function (x) { return x.toLowerCase(); });
+}
+
+/** The Gmail thread to reply in: the outreach thread, or a newer thread from one of the partner's addresses. */
+function replyThread_(o) {
+  var t = sentThread_(o);
+  var addrs = emails_([o.to, o.cc, o.contacts].join(',')).map(function (e) { return e.toLowerCase(); });
+  if (addrs.length) {
+    GmailApp.search('from:(' + addrs.join(' OR ') + ') newer_than:120d -in:drafts -in:trash -in:spam', 0, 5).forEach(function (x) {
+      if (!t || x.getLastMessageDate() > t.getLastMessageDate()) t = x;
+    });
+  }
+  return t;
+}
+
+/** Who a reply-all to the last message of the thread would go to (without you). */
+function replyRecipients_(t) {
+  var msgs = t.getMessages().filter(function (m) { return !m.isDraft(); });
+  var last = msgs[msgs.length - 1], me = myAddrs_();
+  var pick = function (s) {
+    return (String(s || '').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map(function (x) { return x.toLowerCase(); })
+      .filter(function (x, i, a) { return a.indexOf(x) === i && !me.some(function (m) { return m && x === m; }); });
+  };
+  var mine = me.some(function (m) { return m && String(last.getFrom()).toLowerCase().indexOf(m) >= 0; });
+  var to = mine ? pick(last.getTo()) : pick(last.getFrom() + ',' + last.getTo());
+  var cc = pick(last.getCc()).filter(function (x) { return to.indexOf(x) < 0; });
+  return { to: to, cc: cc, subject: last.getSubject(), lastFrom: last.getFrom(), lastDate: last.getDate().toISOString(), url: 'https://mail.google.com/mail/u/0/#all/' + t.getId() };
+}
+
+/**
+ * Writes back to a partner in their Gmail thread, as reply-all to the latest message.
+ * mode 'preview' only says who it goes to; 'draft' saves it as a Gmail draft; 'send' sends it now.
+ */
+function reply_(r, text, mode) {
+  var sh = sh_(), L = layout_(sh), o = readRow_(sh, L, r);
+  skipCheck_(o);
+  var t = replyThread_(o);
+  if (!t) throw new Error('No Gmail thread with ' + o.company + ' in this mailbox. Reply from Gmail this time.');
+  var who = replyRecipients_(t);
+  if (mode === 'preview') return who;
+  text = String(text || '').trim();
+  if (!text) throw new Error('The reply is empty.');
+  var left = text.match(/\[[^\]]+\]/);
+  if (left) throw new Error('The reply still has ' + left[0] + '. Fill it in first.');
+  var partner = emails_([o.to, o.cc, o.contacts].join(',')).map(function (e) { return e.toLowerCase(); });
+  var doms = partner.map(function (e) { return e.split('@')[1]; });
+  var all = who.to.concat(who.cc);
+  var ok = all.some(function (a) { return partner.indexOf(a) >= 0 || doms.indexOf(a.split('@')[1]) >= 0; });
+  if (!ok) throw new Error('The latest message in that thread is not from ' + o.company + ' (' + all.join(', ') + '). Reply from Gmail this time.');
+  if (mode === 'send') capCheck_();
+  var d = t.createDraftReplyAll(text, { htmlBody: toHtml_(text, o.company) });
+  var fields = { replyDraft: text };
+  if (mode === 'send') {
+    d.send();
+    countSend_();
+    fields = { replyDraft: '', lastReplySent: today_() };
+  }
+  label_(t);
+  if (!o.threadId) fields.threadId = t.getId();
+  var res = update_(r, fields);
+  res._reply = { mode: mode, to: who.to, cc: who.cc, subject: who.subject, url: who.url };
   return res;
 }
 

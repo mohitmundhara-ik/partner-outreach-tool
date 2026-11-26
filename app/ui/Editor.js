@@ -6,7 +6,7 @@ import { Field, Icon, Pill, Tag, withCurrent, followUpDue, action, ReplyTag, Sco
 
 const EDITABLE = [F.company, F.companyType, F.segment, F.to, F.cc, F.status, F.sentOn, F.subject, F.body, F.reply, F.next, F.notes, F.initiative, F.audience, F.form, F.how, F.suggested, F.deal, F.link, F.leads, F.enrolments, F.contacts, F.followUp];
 
-export default function Editor({ row, statuses, today, busy, hasSegmentCol, linkBase, loadThread, onClose, onSave, onDraft, onSend, onFollowUp, onMeet, nav }) {
+export default function Editor({ row, statuses, today, busy, hasSegmentCol, linkBase, loadThread, onClose, onSave, onDraft, onSend, onFollowUp, onReply, onMeet, nav }) {
   const [f, setF] = useState(() => Object.fromEntries(EDITABLE.map((k) => [k, row[k] || ''])));
   const [name, setName] = useState('');
   const [tab, setTab] = useState(() => (stage(row[F.status]) === 'new' && !row[F.sentOn] ? 'email' : 'trail'));
@@ -228,13 +228,18 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
                   <Icon name="reply" size={16} /> Send follow-up {nFU + 1}
                 </button>
               )}
+              {['sent', 'replied', 'call'].includes(st) && !row[F.bouncedOn] && (
+                <button className="btn" disabled={!!busy} onClick={onReply} title="Write back in their Gmail thread">
+                  <Icon name="reply" size={16} /> {row[F.replyDraft] ? 'Reply (draft saved)' : 'Reply'}
+                </button>
+              )}
               {['sent', 'replied', 'call'].includes(st) && (
                 <button className={'btn' + (st === 'replied' ? ' send' : '')} disabled={!!busy} onClick={onMeet}>
                   <Icon name="calendar" size={16} /> {st === 'call' ? 'Book another call' : 'Book call'}
                 </button>
               )}
               {!canFollow && st === 'sent' && <span className="muted small">{row[F.bouncedOn] ? 'Bounced.' : nFU >= MAX_FOLLOW_UPS ? 'Both follow-ups sent.' : ''} Sync picks up replies.</span>}
-              {st === 'closed' && <span className="muted small">Closed as {row[F.status]}.</span>}
+              {st === 'closed' && <span className="muted small">{/^skip/i.test(row[F.status] || '') ? `Skip: never emailed. ${String(row[F.notes] || '').replace(/^skip:?\s*/i, '').slice(0, 140)}` : `Closed as ${row[F.status]}.`}</span>}
             </>
           )}
           <span className="spacer" />

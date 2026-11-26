@@ -13,7 +13,7 @@ import AddPartner from './ui/AddPartner';
 import Results from './ui/Results';
 import Targets from './ui/Targets';
 import Settings from './ui/Settings';
-import { FollowUpModal, MeetModal, BulkSendModal } from './ui/Modals';
+import { FollowUpModal, ReplyModal, MeetModal, BulkSendModal } from './ui/Modals';
 
 let cfgPromise;
 function getCfg() {
@@ -77,6 +77,7 @@ export default function App() {
   const [bulk, setBulk] = useState(null); // rows picked for "Send selected"
   const [confirm, setConfirm] = useState(null);
   const [fu, setFu] = useState(null);
+  const [rp, setRp] = useState(null);
   const [meet, setMeet] = useState(null);
   const [busy, setBusy] = useState('');
   const [synced, setSynced] = useState('');
@@ -169,6 +170,21 @@ export default function App() {
       patchSettings({ sentToday: (data.settings?.sentToday || 0) + 1 });
       setFu(null);
       flash(data?.demo ? 'Demo mode: nothing was sent, the row was updated' : `Follow-up ${fu.n} sent to ${r[F.company]}${out._inThread ? ' in the same thread' : ''}`, 'good');
+    } catch (e) { flash(e.message, 'bad'); }
+    setBusy('');
+  }
+
+  async function reply(text, mode) {
+    const r = data.rows.find((x) => x._row === rp);
+    setBusy(mode);
+    try {
+      const out = await api('reply', { row: r._row, text, mode });
+      replaceRow(out);
+      if (mode === 'send') patchSettings({ sentToday: (data.settings?.sentToday || 0) + 1 });
+      setRp(null);
+      const to = (out._reply?.to || []).join(', ');
+      flash(data?.demo ? 'Demo mode: nothing was sent, the row was updated'
+        : mode === 'send' ? `Reply sent to ${to || r[F.company]} in the same thread` : `Reply saved as a Gmail draft in the ${r[F.company]} thread`, 'good');
     } catch (e) { flash(e.message, 'bad'); }
     setBusy('');
   }
@@ -319,10 +335,11 @@ export default function App() {
         {view === 'add' && <AddPartner template={data.template} types={[...new Set(data.rows.map((r) => r[F.companyType]).filter(Boolean))].sort()} onAdd={add} busy={busy === 'add'} />}
       </main>
 
-      {open && <Editor key={[open._row, open[F.updated], open[F.status], open[F.followUps], open[F.followUp], open[F.deal], open[F.meetingOn], open[F.replyType]].join(':')} row={open} statuses={statuses} today={data.today} busy={busy} hasSegmentCol={hasSegmentCol} linkBase={data.settings?.linkBase}
-        loadThread={(row) => api('thread', { row })} onFollowUp={(n) => setFu({ row: open._row, n })} onMeet={() => setMeet(open._row)}
+      {open && <Editor key={[open._row, open[F.updated], open[F.status], open[F.followUps], open[F.followUp], open[F.deal], open[F.meetingOn], open[F.replyType], open[F.replyDraft], open[F.lastReplySent]].join(':')} row={open} statuses={statuses} today={data.today} busy={busy} hasSegmentCol={hasSegmentCol} linkBase={data.settings?.linkBase}
+        loadThread={(row) => api('thread', { row })} onFollowUp={(n) => setFu({ row: open._row, n })} onReply={() => setRp(open._row)} onMeet={() => setMeet(open._row)}
         nav={nav} onClose={() => setOpenRow(null)} onSave={(f) => save(open._row, f)} onDraft={(f) => draft(open._row, f)} onSend={(f) => askSend(open._row, f)} />}
       {fu && <FollowUpModal row={data.rows.find((x) => x._row === fu.row)} n={fu.n} template={data.template} today={data.today} busy={busy === 'followup' || busy === 'template'} onCancel={() => setFu(null)} onSend={followUp} onSaveTemplate={saveTemplate} />}
+      {rp && <ReplyModal row={data.rows.find((x) => x._row === rp)} busy={['draft', 'send'].includes(busy) ? busy : ''} loadPreview={(row) => api('reply', { row, mode: 'preview' })} onCancel={() => setRp(null)} onReply={reply} />}
       {meet && <MeetModal row={data.rows.find((x) => x._row === meet)} busy={busy === 'meet'} onCancel={() => setMeet(null)} onBook={book} />}
       {confirm && <ConfirmSend row={confirm} busy={busy === 'send'} onCancel={() => setConfirm(null)} onConfirm={send} />}
       {bulk && <BulkSendModal rows={bulk} demo={data.demo} cap={data.settings?.cap || 30} used={data.settings?.sentToday || 0} onSendOne={sendOne} onClose={(n) => { setBulk(null); if (n) flash(`${n} email${n > 1 ? 's' : ''} sent and marked Sent in the sheet`, 'good'); }} />}

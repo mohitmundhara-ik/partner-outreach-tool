@@ -43,7 +43,7 @@ export default function Settings({ data, busy, onSave, onSaveTemplate }) {
           <Field label="Daily send cap" hint="Keeps cold outreach at a safe pace for your domain. 20 to 30 is a good range.">
             <input type="number" min="1" max="200" value={cap} onChange={(e) => setCap(e.target.value)} />
           </Field>
-          <Field label="Tracking link base" hint="Partner links are this address plus utm_source=partner-name, utm_medium=partner, utm_campaign=partner_hub.">
+          <Field label="Tracking link base" hint="For links partners share with their audience: this address plus utm_source=partner-name, utm_medium=partner, utm_campaign=partner_hub. (The Interview Kickstart link inside your emails is tagged separately: utm_source=partner_outreach, utm_medium=email, utm_campaign=ik_partnerships, utm_content=partner-name.)">
             <input value={linkBase} onChange={(e) => setLinkBase(e.target.value)} />
           </Field>
           <button className="btn primary" disabled={busy} onClick={() => onSave({ cap: Number(cap) || 30, linkBase })}>Save</button>

@@ -54,7 +54,7 @@ export default function AddPartner({ template, types, onAdd, busy }) {
           <h2>Email preview</h2>
           <div className="mailbox">
             <div className="mail-head"><div className="strong">{mail.subject}</div></div>
-            <div className="mail" dangerouslySetInnerHTML={{ __html: emailHtml(mail.body) }} />
+            <div className="mail" dangerouslySetInnerHTML={{ __html: emailHtml(mail.body, v.company) }} />
           </div>
         </div>
       </div>

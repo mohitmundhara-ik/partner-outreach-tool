@@ -46,7 +46,7 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
   }
 
   async function copy() {
-    const html = emailHtml(f[F.body]);
+    const html = emailHtml(f[F.body], f[F.company] || row[F.company]);
     try {
       await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([f[F.body]], { type: 'text/plain' }) })]);
     } catch {
@@ -125,7 +125,7 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
                 <div className="strong">{f[F.subject]}</div>
               </div>
               {mode === 'preview' ? (
-                <div className="mail" onDoubleClick={() => setMode('edit')} title="Double-click to edit" dangerouslySetInnerHTML={{ __html: emailHtml(f[F.body]) }} />
+                <div className="mail" onDoubleClick={() => setMode('edit')} title="Double-click to edit" dangerouslySetInnerHTML={{ __html: emailHtml(f[F.body], f[F.company] || row[F.company]) }} />
               ) : (
                 <textarea className="mail-edit" rows={18} value={f[F.body]} onChange={set(F.body)} autoFocus />
               )}
@@ -263,12 +263,12 @@ function Trail({ row, load }) {
         <span className="muted small">{msgs.length} email{msgs.length > 1 ? 's' : ''} · labelled "Partnership Outreach" in Gmail</span>
         {state.data.url && <a className="btn ghost small" href={state.data.url} target="_blank" rel="noreferrer">Open in Gmail</a>}
       </div>
-      {msgs.map((m, i) => <Msg key={i} m={m} first={i === 0} />)}
+      {msgs.map((m, i) => <Msg key={i} m={m} first={i === 0} company={row[F.company]} />)}
     </div>
   );
 }
 
-function Msg({ m, first }) {
+function Msg({ m, first, company }) {
   const [open, setOpen] = useState(!first || !m.mine);
   const when = new Date(m.date).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
   const who = m.bounce ? 'Delivery failed' : m.mine ? 'You' : String(m.from).replace(/<.*>/, '').replace(/"/g, '').trim() || m.from;
@@ -279,7 +279,7 @@ function Msg({ m, first }) {
         <span className="muted small">{when}</span>
       </button>
       {!m.mine && !m.bounce && <div className="muted small msg-addr">{m.from}</div>}
-      {open ? <div className="msg-body" dangerouslySetInnerHTML={{ __html: emailHtml(m.text) }} /> : <div className="msg-body clipped">{String(m.text).slice(0, 140)}…</div>}
+      {open ? <div className="msg-body" dangerouslySetInnerHTML={{ __html: emailHtml(m.text, company) }} /> : <div className="msg-body clipped">{String(m.text).slice(0, 140)}…</div>}
     </div>
   );
 }

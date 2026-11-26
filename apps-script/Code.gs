@@ -27,7 +27,18 @@ var SECOND_FOLLOW_UP_DAYS = 7;   // second follow-up due this many days after th
 var MAX_FOLLOW_UPS = 2;
 var DEFAULT_CAP = 30;            // emails a day sent from the app (first emails + follow-ups)
 var BOLD_WORDS = ['Interview Kickstart', '30-minute'];
-var LINKS = { 'Interview Kickstart': 'https://interviewkickstart.com/in' }; // bold words that are also links
+var IK_URL = 'https://interviewkickstart.com/in';
+var LINKS = { 'Interview Kickstart': IK_URL }; // bold words that are also links (UTM tags are added per partner)
+var UTM = 'utm_source=partner_outreach&utm_medium=email&utm_campaign=ik_partnerships';
+
+/** "Acme Labs" -> "acme-labs" (used as utm_content so each partner's clicks are separate). */
+function slug_(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+
+/** The IK link with tracking: same base for everyone, utm_content = the partner. */
+function ikUrl_(company) {
+  var s = slug_(company);
+  return IK_URL + '?' + UTM + (s ? '&utm_content=' + s : '');
+}
 var DEFAULT_STATUSES = ['Not sent', 'Sent', 'Replied', 'Call booked', 'Declined', 'Skip'];
 
 /* Canonical field -> test on the lower-cased header. First matching header wins. */
@@ -368,11 +379,12 @@ function emails_(s) {
 
 function esc_(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
-function toHtml_(text) {
+function toHtml_(text, company) {
   var html = esc_(text);
   BOLD_WORDS.forEach(function (w) {
     var b = '<b>' + esc_(w) + '</b>';
-    html = html.split(esc_(w)).join(LINKS[w] ? '<a href="' + LINKS[w] + '">' + b + '</a>' : b);
+    var href = LINKS[w] === IK_URL ? ikUrl_(company) : LINKS[w];
+    html = html.split(esc_(w)).join(href ? '<a href="' + href.replace(/&/g, '&amp;') + '">' + b + '</a>' : b);
   });
   return '<div>' + html.replace(/\r?\n/g, '<br>') + '</div>';
 }
@@ -385,7 +397,7 @@ function compose_(o) {
   if (!subject || !body.trim()) throw new Error('Subject or email body is empty.');
   var left = (subject + body).match(/\[[^\]]+\]/);
   if (left) throw new Error('The email still has ' + left[0] + '. Fill it in first.');
-  var opts = { htmlBody: toHtml_(body) };
+  var opts = { htmlBody: toHtml_(body, o.company) };
   if (cc.length) opts.cc = cc.join(', ');
   return { to: to, subject: subject, body: body, opts: opts };
 }
@@ -479,7 +491,7 @@ function followup_(r, text) {
   if (!to.length) throw new Error('No email address for ' + o.company + '.');
   capCheck_();
   var thread = sentThread_(o);
-  var html = toHtml_(text);
+  var html = toHtml_(text, o.company);
   var sentInThread = false;
   if (thread) {
     var d = thread.createDraftReplyAll(text, { htmlBody: html });
@@ -667,6 +679,44 @@ function morningBrief() {
 }
 
 /** Run once from the editor after pasting a new version, to approve Gmail, Calendar, Sheet and trigger access. */
+/**
+ * One-time tidy-up: puts the same UTM link on every "Interview Kickstart" hyperlink already in the sheet
+ * (email body cells on the Emails tab, and the Master email tab). Safe to run again. Bold and other formatting stay.
+ */
+function tagSheetLinks() {
+  var sh = sh_(), L = layout_(sh), n = 0;
+  if (L.map.body != null && sh.getLastRow() > 1) {
+    var rows = sh.getLastRow() - 1;
+    var names = sh.getRange(2, L.map.company + 1, rows, 1).getValues();
+    var rng = sh.getRange(2, L.map.body + 1, rows, 1);
+    var rich = rng.getRichTextValues();
+    var out = rich.map(function (r, i) { var x = retag_(r[0], names[i][0]); if (x.changed) n++; return [x.value]; });
+    if (n) rng.setRichTextValues(out);
+  }
+  var m = master_();
+  if (m) {
+    var mr = m.getDataRange(), mrich = mr.getRichTextValues(), mc = 0;
+    var mout = mrich.map(function (row) { return row.map(function (v) { var x = retag_(v, ''); if (x.changed) mc++; return x.value; }); });
+    if (mc) mr.setRichTextValues(mout);
+    n += mc;
+  }
+  Logger.log('Updated ' + n + ' cells with the tracked IK link');
+  return n;
+}
+
+function retag_(rt, company) {
+  if (!rt) return { value: rt, changed: false };
+  var b = rt.copy(), changed = false;
+  rt.getRuns().forEach(function (run) {
+    var url = run.getLinkUrl();
+    if (url && /interviewkickstart\.com/i.test(url)) {
+      var want = company ? ikUrl_(company) : IK_URL + '?' + UTM;
+      if (url !== want) { b.setLinkUrl(run.getStartIndex(), run.getEndIndex(), want); changed = true; }
+    }
+  });
+  return { value: changed ? b.build() : rt, changed: changed };
+}
+
 function authorize() {
   GmailApp.getAliases();
   GmailApp.getUserLabelByName(LABEL) || GmailApp.createLabel(LABEL);

@@ -27,7 +27,7 @@ export function FollowUpModal({ row, n, template, busy, today, onCancel, onSend,
         <button className={!preview ? 'on' : ''} onClick={() => setPreview(false)}>Edit</button>
         <button className={preview ? 'on' : ''} onClick={() => setPreview(true)}>Preview</button>
       </div>
-      {preview ? <div className="mailbox"><div className="mail" dangerouslySetInnerHTML={{ __html: emailHtml(text) }} /></div> : <textarea rows={9} value={text} onChange={(e) => setText(e.target.value)} />}
+      {preview ? <div className="mailbox"><div className="mail" dangerouslySetInnerHTML={{ __html: emailHtml(text, row[F.company]) }} /></div> : <textarea rows={9} value={text} onChange={(e) => setText(e.target.value)} />}
       {left.length > 0 && <p className="warn-text small">Fill in {left.join(', ')} first.</p>}
       <div className="modal-actions">
         <button className="btn ghost" disabled={busy} onClick={() => onSaveTemplate(n === 1 ? 'f1' : 'f2', toTemplate(text, row[F.company]))}>Save as my template</button>

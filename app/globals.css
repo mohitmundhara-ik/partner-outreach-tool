@@ -485,3 +485,46 @@ tr.picked td { background: var(--brand-soft); }
 .gcompose > p, .gcompose > .banner { margin: 0 12px 8px; }
 .gcompose-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid var(--line); }
 @media (max-width: 960px) { .gmsg-body { padding-left: 14px; } .gmsg-when { font-size: 11px; } }
+
+/* Company details in sections */
+.dsecs { display: grid; gap: 14px; margin-bottom: 8px; }
+.dsec { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 4px; background: var(--card); }
+.dsec h4 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.dsec .deal-steps { margin-bottom: 14px; }
+.dsec textarea { resize: vertical; }
+
+/* Call prep */
+.kit { display: grid; gap: 14px; margin-bottom: 8px; }
+.kit-goal { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 12px; background: var(--brand-soft); border: 1px solid color-mix(in srgb, var(--brand) 20%, var(--line)); }
+.kit-goal p { margin: 4px 0 0; font-weight: 500; color: var(--ink); }
+.kit-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+.kit-where { margin: 0; display: grid; gap: 8px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card2); font-size: 13px; }
+.kit-where div { display: grid; grid-template-columns: 130px 1fr; gap: 10px; }
+.kit-where dt { color: var(--muted); }
+.kit-where dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.kit-sec { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--card); }
+.kit-sec h4 { margin: 0 0 6px; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+.kit-n { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; background: var(--brand); color: #fff; }
+.kit-hint { margin: 0 0 10px; }
+.kit-say { margin: 8px 0; padding: 10px 12px; border-left: 3px solid var(--brand); background: var(--card2); border-radius: 0 8px 8px 0; font-size: 13.5px; line-height: 1.55; }
+.kit-agenda { display: grid; gap: 6px; margin-top: 10px; font-size: 13px; }
+.kit-agenda div { display: grid; grid-template-columns: 96px 1fr; gap: 10px; }
+.kit-agenda b { color: var(--muted); font-weight: 600; }
+.kit-list { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 8px; font-size: 13.5px; line-height: 1.5; }
+.kit-list.plain { list-style: disc; }
+.kit-must { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: var(--brand-soft); color: var(--brand); margin-right: 4px; }
+.kit-why { display: block; }
+.kit-beats { display: grid; gap: 10px; }
+.kit-beats div { display: grid; grid-template-columns: 150px 1fr; gap: 10px; font-size: 13.5px; }
+.kit-beats p { margin: 0; line-height: 1.5; }
+.kit-offers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.kit-offer { position: relative; padding: 12px 14px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card2); }
+.kit-offer h5 { margin: 0 0 4px; font-size: 13.5px; padding-right: 26px; }
+.kit-offer p { margin: 0 0 4px; font-size: 13px; color: var(--ink2); }
+.kit-obj { display: grid; gap: 10px; }
+.kit-obj div { padding: 10px 12px; border-radius: 10px; background: var(--card2); font-size: 13px; }
+.kit-obj p { margin: 4px 0 0; color: var(--ink2); line-height: 1.5; }
+.kit-rules { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 16px; border-radius: 12px; border: 1px dashed var(--line); font-size: 13px; }
+.kit-rules ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink2); }
+@media (max-width: 700px) { .kit-offers, .kit-rules { grid-template-columns: 1fr; } .kit-beats div, .kit-where div, .kit-agenda div { grid-template-columns: 1fr; gap: 2px; } }
+.kit-offer .play-n { position: absolute; top: 10px; right: 10px; margin: 0; }

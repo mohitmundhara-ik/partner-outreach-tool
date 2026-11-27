@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { F, stage, emailHtml, emails, placeholders, prettyDate, DEAL_STAGES, MAX_FOLLOW_UPS, suggestedReply } from '@/lib/fields';
 import { segmentOf, bandsOf, focusOf, isCompetitor, fmtReach, reachOf } from '@/lib/segments';
+import { toolkit, toolkitText } from '@/lib/toolkit';
 import { Field, Icon, Pill, Tag, withCurrent, followUpDue, action, ReplyTag, Score, score } from './common';
 
 const EDITABLE = [F.company, F.companyType, F.segment, F.to, F.cc, F.status, F.sentOn, F.subject, F.body, F.reply, F.next, F.notes, F.initiative, F.audience, F.form, F.how, F.suggested, F.deal, F.link, F.leads, F.enrolments, F.contacts, F.followUp];
@@ -10,7 +11,8 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
   const [compose, setCompose] = useState(0);
   const [f, setF] = useState(() => Object.fromEntries(EDITABLE.map((k) => [k, row[k] || ''])));
   const [name, setName] = useState('');
-  const [tab, setTab] = useState(() => (stage(row[F.status]) === 'new' && !row[F.sentOn] ? 'email' : 'trail'));
+  const mailed = !!row[F.sentOn] || ['sent', 'replied', 'call'].includes(stage(row[F.status]));
+  const [tab, setTab] = useState(() => (mailed ? 'trail' : 'email'));
   const [mode, setMode] = useState('preview');
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const changed = Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== (row[k] || '')));
@@ -87,7 +89,7 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
         </div>
 
         <div className="ptabs">
-          {[...(st !== 'new' || row[F.sentOn] ? [['trail', 'Email trail']] : []), ['email', st === 'new' ? 'Email' : 'First email'], ['plays', 'Plays for the call'], ['details', 'Company details']].map(([k, l]) => (
+          {[(mailed ? ['trail', 'Email trail'] : ['email', 'Email']), ['plays', 'Call prep'], ['details', 'Company details']].map(([k, l]) => (
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
           ))}
         </div>
@@ -136,78 +138,81 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
           </>
         )}
 
-        {tab === 'plays' && (
-          <div className="plays-panel">
-            <p className="muted small">Ideas to pitch on the 30-minute call, picked for a {seg.name.toLowerCase()} partner{bands.length ? ' whose audience is ' + bands.map((b) => b.name.toLowerCase()).join(', ') : ''}.</p>
-            {seg.plays.map((p, i) => (
-              <div key={p.title} className="play small-play">
-                <span className="play-n">{i + 1}</span>
-                <h4>{p.title}</h4>
-                <p>{p.how}</p>
-                <p className="ask"><b>Ask:</b> {p.ask}</p>
-              </div>
-            ))}
-            {bands.map((b) => (
-              <div key={b.key} className="bp">
-                <b>{b.name}: {b.hook}</b>
-                <ul>{b.plays.map((x) => <li key={x}>{x}</li>)}</ul>
-              </div>
-            ))}
-            {focus.length > 0 && <div className="chips">{focus.map((x) => <span key={x} className="chip static">{x}</span>)}</div>}
-          </div>
-        )}
+        {tab === 'plays' && <CallKit row={row} seg={seg} bands={bands} focus={focus} />}
 
         {tab === 'details' && (
-          <>
+          <div className="dsecs">
             {['replied', 'call'].includes(st) || row[F.deal] ? (
-              <div className="deal-box">
-                <h3 style={{ marginTop: 0 }}>Partnership</h3>
+              <section className="dsec">
+                <h4><Icon name="link" size={15} /> Partnership</h4>
                 <div className="deal-steps">
                   {DEAL_STAGES.map((d) => <button key={d} className={'deal-step' + (f[F.deal] === d ? ' on' : '')} onClick={() => setF((x) => ({ ...x, [F.deal]: d }))}>{d}</button>)}
                 </div>
-                <Field label="Tracking link (share with the partner so you can count sign-ups from them)">
+                <Field label="Tracking link (share it with the partner to count sign-ups from them)">
                   <div className="namebar">
-                    <input value={f[F.link]} onChange={set(F.link)} placeholder="Create one with the button" />
+                    <input value={f[F.link]} onChange={set(F.link)} placeholder="Press Create to make one" />
                     <button className="btn" onClick={makeLink}><Icon name="link" size={16} /> Create</button>
-                    {f[F.link] && <button className="btn ghost" onClick={() => navigator.clipboard.writeText(f[F.link])}><Icon name="copy" size={16} /></button>}
+                    {f[F.link] && <button className="btn ghost" onClick={() => navigator.clipboard.writeText(f[F.link])} title="Copy"><Icon name="copy" size={16} /></button>}
                   </div>
                 </Field>
                 <div className="two">
                   <Field label="Leads from this partner"><input type="number" min="0" value={f[F.leads]} onChange={set(F.leads)} /></Field>
                   <Field label="Enrolments from this partner"><input type="number" min="0" value={f[F.enrolments]} onChange={set(F.enrolments)} /></Field>
                 </div>
-              </div>
+              </section>
             ) : null}
-            <div className="two">
-              <Field label="Status">
-                <select value={f[F.status] || statuses[0]} onChange={set(F.status)}>{withCurrent(statuses, row[F.status]).map((s) => <option key={s}>{s}</option>)}</select>
-              </Field>
-              <Field label="Sent on"><input type="date" value={f[F.sentOn]} onChange={set(F.sentOn)} /></Field>
-              <Field label="Company type"><input value={f[F.companyType]} onChange={set(F.companyType)} /></Field>
-              {hasSegmentCol ? (
-                <Field label="Segment (overrides the automatic one)"><input value={f[F.segment]} onChange={set(F.segment)} placeholder={seg.name} /></Field>
-              ) : (
-                <Field label="Segment" hint="Add a Segment column to the sheet to override this."><input value={seg.name} disabled /></Field>
-              )}
-              <Field label="Initiative used in email"><input value={f[F.initiative]} onChange={set(F.initiative)} /></Field>
-              <Field label="Audience"><input value={f[F.audience]} onChange={set(F.audience)} /></Field>
-              <Field label="How to reach"><input value={f[F.how]} onChange={set(F.how)} /></Field>
-              <Field label="Suggested contact (not in email)"><input value={f[F.suggested]} onChange={set(F.suggested)} /></Field>
-              <Field label="Follow-up due"><input type="date" value={f[F.followUp]} onChange={set(F.followUp)} /></Field>
-            </div>
-            <Field label="Other contacts (name, role, email or LinkedIn, one per line)"><textarea rows={3} value={f[F.contacts]} onChange={set(F.contacts)} /></Field>
-            {reachOf(row[F.audience]) > 0 && <p className="muted small">Estimated reach: {fmtReach(reachOf(row[F.audience]))} (from the Audience column)</p>}
-            <Field label="Form link">
-              <div className="namebar">
-                <input value={f[F.form]} onChange={set(F.form)} />
-                {/^https?:\/\//.test(f[F.form]) && <a className="btn" href={f[F.form]} target="_blank" rel="noreferrer">Open</a>}
+
+            <section className="dsec">
+              <h4><Icon name="calendar" size={15} /> Status and next step</h4>
+              <div className="two">
+                <Field label="Status">
+                  <select value={f[F.status] || statuses[0]} onChange={set(F.status)}>{withCurrent(statuses, row[F.status]).map((x) => <option key={x}>{x}</option>)}</select>
+                </Field>
+                <Field label="Next step"><input value={f[F.next]} onChange={set(F.next)} placeholder="What happens next" /></Field>
+                <Field label="Sent on"><input type="date" value={f[F.sentOn]} onChange={set(F.sentOn)} /></Field>
+                <Field label="Follow-up due"><input type="date" value={f[F.followUp]} onChange={set(F.followUp)} /></Field>
               </div>
-            </Field>
-            <Field label="Reply"><textarea rows={2} value={f[F.reply]} onChange={set(F.reply)} /></Field>
-            <Field label="Next step"><input value={f[F.next]} onChange={set(F.next)} /></Field>
-            <Field label="Notes / flags"><textarea rows={3} value={f[F.notes]} onChange={set(F.notes)} /></Field>
-            {row[F.overlap] && <p className="muted small"><b>Overlap line (not in email):</b> {row[F.overlap]}</p>}
-          </>
+            </section>
+
+            <section className="dsec">
+              <h4><Icon name="reply" size={15} /> People and how to reach them</h4>
+              <div className="two">
+                <Field label="Email goes to"><input value={f[F.to]} onChange={set(F.to)} /></Field>
+                <Field label="CC"><input value={f[F.cc]} onChange={set(F.cc)} /></Field>
+                <Field label="How to reach"><input value={f[F.how]} onChange={set(F.how)} /></Field>
+                <Field label="Suggested contact (not in the email)"><input value={f[F.suggested]} onChange={set(F.suggested)} /></Field>
+              </div>
+              <Field label="Other contacts (name, role, email or LinkedIn, one per line)"><textarea rows={2} value={f[F.contacts]} onChange={set(F.contacts)} /></Field>
+              <Field label="Contact form">
+                <div className="namebar">
+                  <input value={f[F.form]} onChange={set(F.form)} placeholder="Link to their partner or contact form" />
+                  {/^https?:\/\//.test(f[F.form]) && <a className="btn" href={f[F.form]} target="_blank" rel="noreferrer">Open</a>}
+                </div>
+              </Field>
+            </section>
+
+            <section className="dsec">
+              <h4><Icon name="audience" size={15} /> About them</h4>
+              <div className="two">
+                <Field label="Company type"><input value={f[F.companyType]} onChange={set(F.companyType)} /></Field>
+                {hasSegmentCol ? (
+                  <Field label="Segment (overrides the automatic one)"><input value={f[F.segment]} onChange={set(F.segment)} placeholder={seg.name} /></Field>
+                ) : (
+                  <Field label="Segment"><input value={seg.name} disabled /></Field>
+                )}
+                <Field label="Audience"><input value={f[F.audience]} onChange={set(F.audience)} /></Field>
+                <Field label="Hook used in the email"><input value={f[F.initiative]} onChange={set(F.initiative)} /></Field>
+              </div>
+              {reachOf(row[F.audience]) > 0 && <p className="muted small">Estimated reach: {fmtReach(reachOf(row[F.audience]))}</p>}
+            </section>
+
+            <section className="dsec">
+              <h4><Icon name="draft" size={15} /> Notes</h4>
+              <Field label="Their reply (summary)"><textarea rows={2} value={f[F.reply]} onChange={set(F.reply)} /></Field>
+              <Field label="Notes and flags"><textarea rows={3} value={f[F.notes]} onChange={set(F.notes)} /></Field>
+              {row[F.overlap] && <p className="muted small"><b>Overlap line (not in email):</b> {row[F.overlap]}</p>}
+            </section>
+          </div>
         )}
 
         <div className="actionbar">
@@ -279,9 +284,18 @@ function Trail({ row, load, busy, compose, canReply, onReply, onMeet, followUp, 
         <Msg key={m.id || i} m={m} company={row[F.company]} startsThread={i > 0 && m.thread && m.thread !== msgs[i - 1].thread}
           open={i === last || (!m.mine && !m.bounce && i >= last - 2)} />
       ))}
-      {canReply && <Composer key={compose} row={row} who={state.data.reply} busy={busy} startOpen={compose > 0} onReply={onReply} onMeet={onMeet} followUp={followUp} nFU={nFU} />}
+      {canReply && <Composer key={compose} row={row} who={state.data.reply} them={theirName(msgs, row[F.company])} busy={busy} startOpen={compose > 0} onReply={onReply} onMeet={onMeet} followUp={followUp} nFU={nFU} />}
     </div>
   );
+}
+
+/** First name of whoever wrote to us last, if it looks like a person (not "Team" or a company inbox). */
+function theirName(msgs, company) {
+  const m = [...msgs].reverse().find((x) => !x.mine && !x.bounce);
+  if (!m) return '';
+  const n = nameOf(m.from).split(/\s+/)[0] || '';
+  if (String(company || '').toLowerCase().includes(n.toLowerCase())) return '';
+  return /^[A-Z][a-z]{1,20}$/.test(n) && !/^(team|info|hello|support|admin|partnerships?|contact|marketing|sales|no|the)$/i.test(n) ? n : '';
 }
 
 const nameOf = (from) => String(from || '').replace(/<.*>/, '').replace(/"/g, '').trim() || String(from || '');
@@ -312,9 +326,10 @@ function Msg({ m, company, open: startOpen, startsThread }) {
 }
 
 /** Gmail-style reply box at the end of the conversation: reply-all, draft or send (with one confirm). */
-function Composer({ row, who, busy, startOpen, onReply, onMeet, followUp, nFU }) {
+function Composer({ row, who, them, busy, startOpen, onReply, onMeet, followUp, nFU }) {
   const [open, setOpen] = useState(startOpen || !!row[F.replyDraft]);
-  const [text, setText] = useState(() => row[F.replyDraft] || suggestedReply(row));
+  const suggestion = row[F.replyDraft] ? '' : suggestedReply(row, them);
+  const [text, setText] = useState(() => row[F.replyDraft] || suggestion);
   const [sure, setSure] = useState(false);
   const ref = (el) => { if (el && startOpen) el.scrollIntoView({ block: 'nearest' }); };
   const left = placeholders(text);
@@ -336,7 +351,8 @@ function Composer({ row, who, busy, startOpen, onReply, onMeet, followUp, nFU })
         {who ? <span><span className="muted">To</span> {(who.to || []).join(', ') || '(nobody)'}{who.cc?.length ? <><span className="muted"> · Cc</span> {who.cc.join(', ')}</> : null}</span>
           : <span className="warn-text">No Gmail thread with {row[F.company]} to reply in. Reply from Gmail this time.</span>}
       </div>
-      <textarea rows={9} value={text} onChange={(e) => { setText(e.target.value); setSure(false); }} autoFocus={startOpen} />
+      <textarea rows={9} value={text} placeholder={`Write your reply to ${row[F.company]}…`} onChange={(e) => { setText(e.target.value); setSure(false); }} autoFocus={startOpen} />
+      <p className="muted small">{row[F.replyDraft] ? 'Your saved draft.' : suggestion ? 'Suggested from their last message. Read it and edit before sending.' : 'No suggestion here: this one needs your own answer.'}</p>
       {left.length > 0 && <p className="warn-text small">Fill in {left.join(', ')} first.</p>}
       {row[F.lastReplySent] && <p className="muted small">Last reply sent {prettyDate(row[F.lastReplySent])}.</p>}
       {sure && <div className="banner">Send this to {rcpt.join(', ')} now? It can't be unsent.</div>}
@@ -385,5 +401,81 @@ export function ConfirmSend({ row, busy, onCancel, onConfirm }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Call prep: how to open, what to ask, what to say, offers, pushback, close. Built from the first-call kit and their reply. */
+function CallKit({ row, seg, bands, focus }) {
+  const k = toolkit(row, seg, bands);
+  const [copied, setCopied] = useState(false);
+  const [more, setMore] = useState(false);
+  const asks = more ? k.ask : k.ask.slice(0, 8);
+  const copy = async () => { try { await navigator.clipboard.writeText(toolkitText(row, k)); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
+  return (
+    <div className="kit">
+      <div className="kit-goal">
+        <div>
+          <div className="kit-label">Goal of the call</div>
+          <p>{k.goal}</p>
+        </div>
+        <button className="btn ghost small" onClick={copy}><Icon name="copy" size={14} /> {copied ? 'Copied' : 'Copy as notes'}</button>
+      </div>
+
+      {k.where.length > 0 && (
+        <dl className="kit-where">
+          {k.where.map((w) => <div key={w.label}><dt>{w.label}</dt><dd>{w.text}</dd></div>)}
+        </dl>
+      )}
+
+      <KitSection n="1" title="How to open">
+        {k.open.map((x, i) => <p key={i} className="kit-say">"{x}"</p>)}
+        <div className="kit-agenda">{k.agenda.map(([t, x]) => <div key={t}><b>{t}</b><span>{x}</span></div>)}</div>
+      </KitSection>
+
+      <KitSection n="2" title="What to ask" hint="Ask five or six, not all. Must-asks matter on every call.">
+        <ol className="kit-list">
+          {asks.map((a, i) => <li key={i}>{a.must && <span className="kit-must">Must-ask</span>} {a.q}{a.why && <span className="muted small kit-why"> {a.why}</span>}</li>)}
+        </ol>
+        {k.ask.length > 8 && <button className="btn ghost small" onClick={() => setMore(!more)}>{more ? 'Show fewer' : `Show all ${k.ask.length} questions`}</button>}
+        <p className="muted small">Listen for: audience overlap with working engineers who want top-tier roles, an upcoming slot we can fill, and whether they need money (sponsorship) or value (content for members).</p>
+      </KitSection>
+
+      <KitSection n="3" title="What to say" hint="About 90 seconds. Talk about their members, not our programmes.">
+        <div className="kit-beats">{k.say.map((b) => <div key={b.beat}><b>{b.beat}</b><p>{b.text}</p></div>)}</div>
+      </KitSection>
+
+      <KitSection n="4" title="What we can offer them" hint={`Lead with one or two, picked for a ${seg.name.toLowerCase()} partner.`}>
+        <div className="kit-offers">
+          {k.offers.map((o, i) => <div key={o.title} className="kit-offer"><span className="play-n">{i + 1}</span><h5>{o.title}</h5><p>{o.how}</p><p className="muted small"><b>Ask:</b> {o.ask}</p></div>)}
+        </div>
+        {k.extra.map((b) => <div key={b.band} className="bp"><b>{b.band}: {b.hook}</b><ul>{b.plays.map((x) => <li key={x}>{x}</li>)}</ul></div>)}
+        {focus.length > 0 && <div className="chips">{focus.map((x) => <span key={x} className="chip static">{x}</span>)}</div>}
+      </KitSection>
+
+      <KitSection n="5" title="If they say…">
+        <div className="kit-obj">{k.objections.map((o) => <div key={o.they}><b>{o.they}</b><p>{o.you}</p></div>)}</div>
+      </KitSection>
+
+      <KitSection n="6" title="Close and next steps">
+        <ul className="kit-list plain">{k.close.map((x) => <li key={x}>{x}</li>)}</ul>
+        <div className="kit-label" style={{ marginTop: 10 }}>After the call</div>
+        <ul className="kit-list plain">{k.after.map((x) => <li key={x}>{x}</li>)}</ul>
+      </KitSection>
+
+      <div className="kit-rules">
+        <div><div className="kit-label">Facts you can say</div><ul>{k.facts.map((x) => <li key={x}>{x}</li>)}</ul></div>
+        <div><div className="kit-label">Do not</div><ul>{k.dont.map((x) => <li key={x}>{x}</li>)}</ul></div>
+      </div>
+    </div>
+  );
+}
+
+function KitSection({ n, title, hint, children }) {
+  return (
+    <section className="kit-sec">
+      <h4><span className="kit-n">{n}</span> {title}</h4>
+      {hint && <p className="muted small kit-hint">{hint}</p>}
+      {children}
+    </section>
   );
 }

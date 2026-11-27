@@ -27,12 +27,12 @@ function getCfg() {
 const NO_GOOGLE = 'Could not reach your Google Sheet. Make sure this browser is signed in to your interviewkickstart.com Google account, then reload.';
 
 // Calls the Apps Script straight from the browser (JSONP), so your company Google sign-in is used.
-function jsonp(url, payload) {
+function jsonp(url, payload, ms = 45000, slowMsg = NO_GOOGLE) {
   return new Promise((resolve, reject) => {
     const cb = '__ik' + Date.now() + Math.random().toString(36).slice(2);
     const s = document.createElement('script');
     const done = () => { clearTimeout(timer); delete window[cb]; s.remove(); };
-    const timer = setTimeout(() => { done(); reject(new Error(NO_GOOGLE)); }, 45000);
+    const timer = setTimeout(() => { done(); reject(new Error(slowMsg)); }, ms);
     window[cb] = (d) => { done(); d && d.ok ? resolve(d.data) : reject(new Error((d && d.error) || 'Backend error')); };
     s.onerror = () => { done(); reject(new Error(NO_GOOGLE)); };
     s.src = url + (url.includes('?') ? '&' : '?') + 'cb=' + cb + '&q=' + encodeURIComponent(JSON.stringify(payload));
@@ -40,9 +40,14 @@ function jsonp(url, payload) {
   });
 }
 
+const SYNC_SLOW = 'Sync is still running in the background. Reload the page in a minute or two to see the updates.';
+
 async function api(action, payload = {}) {
   const cfg = await getCfg();
-  if (cfg.browser) return jsonp(cfg.url, { token: cfg.token, action, ...payload });
+  // Sync reads Gmail and Calendar for every open row, so it gets up to 5.5 minutes instead of 45 seconds.
+  if (cfg.browser) return action === 'sync'
+    ? jsonp(cfg.url, { token: cfg.token, action, ...payload }, 330000, SYNC_SLOW)
+    : jsonp(cfg.url, { token: cfg.token, action, ...payload });
   const r = await fetch('/api/sheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...payload }) });
   if (r.status === 401) { window.location.href = '/login'; throw new Error('Please sign in'); }
   const j = await r.json();
@@ -254,7 +259,7 @@ export default function App() {
     try {
       const r = await api('sync');
       await load();
-      flash(`Synced: ${r.sent} newly sent, ${r.replied} new replies${r.calls ? `, ${r.calls} calls found on your Calendar` : ''}${r.myReplies ? `, ${r.myReplies} of your replies from Gmail` : ''}${r.bounced ? `, ${r.bounced} bounced` : ''}${r.ooo ? `, ${r.ooo} out of office` : ''}${r.labelled ? `, ${r.labelled} threads labelled` : ''}`, 'good');
+      flash(`Synced: ${r.sent} newly sent, ${r.replied} new replies${r.calls ? `, ${r.calls} calls found on your Calendar` : ''}${r.myReplies ? `, ${r.myReplies} of your replies from Gmail` : ''}${r.bounced ? `, ${r.bounced} bounced` : ''}${r.ooo ? `, ${r.ooo} out of office` : ''}${r.labelled ? `, ${r.labelled} threads labelled` : ''}${r.partial ? '. Some rows were left for the next sync (it runs every 15 minutes).' : ''}`, 'good');
     } catch (e) { flash(e.message, 'bad'); }
     setBusy('');
   }

@@ -129,8 +129,10 @@ function run_(contents) {
   try {
     var req = JSON.parse(contents || '{}');
     if (req.token !== TOKEN) throw new Error('Unauthorized');
+    // Reading the sheet never waits for a running Sync; only changes take the lock.
+    if (req.action === 'list' || req.action === 'thread') return { ok: true, data: handle_(req) };
     var lock = LockService.getDocumentLock();
-    lock.waitLock(30000);
+    lock.waitLock(req.action === 'sync' ? 5000 : 30000);
     try { return { ok: true, data: handle_(req) }; } finally { lock.releaseLock(); }
   } catch (err) {
     return { ok: false, error: String(err && err.message || err) };
@@ -660,19 +662,26 @@ function partnerKeys_(o, myDomain) {
 function hits_(addr, keys) { return keys.indexOf(addr) >= 0 || keys.indexOf(addr.split('@')[1]) >= 0; }
 
 /** Recent Gmail threads with any partner (last 30 days), searched by partner domain only. */
-function partnerThreads_(allKeys) {
+var BULK_FROM = /(no-?reply|donotreply|notifications?|alerts?|jobs?|newsletter|digest|mailer|marketing|updates?|news)@/i;
+function partnerThreads_(allKeys, me) {
   var seen = {}, out = [];
-  for (var i = 0; i < allKeys.length; i += 20) {
-    var part = allKeys.slice(i, i + 20).map(function (k) { return 'from:' + k + ' to:' + k + ' cc:' + k; }).join(' ');
-    GmailApp.search('{' + part + '} newer_than:30d -in:drafts -in:trash -in:spam', 0, 100).forEach(function (t) {
+  var isMe = function (f) { f = lower_(f); return me.some(function (m) { return m && f.indexOf(m) >= 0; }); };
+  for (var i = 0; i < allKeys.length; i += 10) {
+    var part = allKeys.slice(i, i + 10).map(function (k) { return 'from:' + k + ' to:' + k; }).join(' ');
+    GmailApp.search('{' + part + '} newer_than:30d -in:drafts -in:trash -in:spam -category:promotions -category:social', 0, 50).forEach(function (t) {
       if (seen[t.getId()]) return;
       seen[t.getId()] = 1;
-      var msgs = t.getMessages().filter(function (m) { return !m.isDraft(); }).map(function (m) {
-        var bulk = false;
-        try { bulk = !!m.getHeader('List-Unsubscribe'); } catch (err) {}
-        return { m: m, from: addrsIn_(m.getFrom()), all: addrsIn_([m.getFrom(), m.getTo(), m.getCc()].join(',')), date: m.getDate(), bulk: bulk };
+      var aboutUs = /interview kickstart|partner/i.test(t.getFirstMessageSubject());
+      var raw = t.getMessages().filter(function (m) { return !m.isDraft(); });
+      // Only real conversations: you wrote in the thread, or it is about Interview Kickstart or a partnership.
+      // Everything else (newsletters, job alerts from the same company) is dropped before any slow reads.
+      if (!aboutUs && !raw.some(function (m) { return isMe(m.getFrom()); })) return;
+      var msgs = raw.map(function (m) {
+        var from = m.getFrom(), bulk = BULK_FROM.test(from);
+        if (!bulk && !isMe(from)) { try { bulk = !!m.getHeader('List-Unsubscribe'); } catch (err) {} }
+        return { m: m, from: addrsIn_(from), all: addrsIn_([from, m.getTo(), m.getCc()].join(',')), date: m.getDate(), bulk: bulk };
       });
-      out.push({ t: t, msgs: msgs, aboutUs: /interview kickstart|partner/i.test(t.getFirstMessageSubject()) });
+      out.push({ t: t, msgs: msgs, aboutUs: true });
     });
   }
   return out;
@@ -691,11 +700,17 @@ function calendarCalls_() {
 
 /** The call with this partner: the next one if any, else the latest in the past two weeks. */
 function callFor_(events, keys, company) {
-  var name = lower_(company).replace(/\(.*?\)/g, '').trim();
+  // Names to look for in the event title: "DevFest Pune 2026 (GDG Pune)" gives "devfest pune" and "gdg pune".
+  var c = lower_(company), names = [];
+  [c.replace(/\(.*?\)/g, '')].concat((c.match(/\(([^)]*)\)/g) || []).map(function (x) { return x.slice(1, -1); })).forEach(function (x) {
+    x = x.replace(/\b20\d\d\b/g, '').replace(/\s+/g, ' ').trim();
+    if (x.length >= 5 && names.indexOf(x) < 0) names.push(x);
+  });
   var now = new Date(), next = null, last = null;
   events.forEach(function (e) {
     var guest = e.guests.some(function (g) { return hits_(g, keys); });
-    var titled = name.length >= 5 && lower_(e.title).indexOf(name) >= 0;
+    var t = lower_(e.title);
+    var titled = names.some(function (x) { return t.indexOf(x) >= 0; });
     if (!guest && !titled) return;
     if (e.start >= now) { if (!next || e.start < next.start) next = e; }
     else if (!last || e.start > last.start) last = e;
@@ -728,11 +743,18 @@ function sync_() {
     o._keys.forEach(function (k) { if (allKeys.indexOf(k) < 0) allKeys.push(k); });
     rows.push(o);
   }
-  var threads = allKeys.length ? partnerThreads_(allKeys) : [];
+  var started = Date.now(), BUDGET = 270000; // stop before Apps Script's 6-minute limit; the rest waits for the next sync
+  var threads = allKeys.length ? partnerThreads_(allKeys, me) : [];
   var events = [];
   try { events = calendarCalls_(); } catch (err) {}
 
   rows.forEach(function (o) {
+    if (Date.now() - started > BUDGET) { res.partial = true; return; }
+    try { syncRow_(o); } catch (err) { res.errors = (res.errors || 0) + 1; }
+  });
+  return res;
+
+  function syncRow_(o) {
     var f = {}, keys = o._keys;
     var sent = sentThread_(o);
     var firstMine = null, bounce = null, replies = [], mineAll = [];
@@ -806,8 +828,7 @@ function sync_() {
       }
     }
     if (Object.keys(f).length) update_(o._row, f);
-  });
-  return res;
+  }
 }
 
 /* ---------------- Calendar ---------------- */

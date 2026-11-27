@@ -12,7 +12,8 @@
  *  - sends an email ONLY when you press "Send now" or "Send follow-up" in the app and confirm,
  *    one partner at a time, up to your daily cap;
  *  - puts the Gmail label "Partnership Outreach" on every outreach thread (first email, follow-ups, replies, bounces);
- *  - creates a Calendar event when you book a call from the app;
+ *  - creates a Calendar event when you book a call from the app, and Sync reads your Calendar to spot calls
+ *    booked with a partner any other way (it only reads events, never changes them);
  *  - emails YOU a morning brief, if you turn it on in the app.
  * Columns are found by their header names. Missing tracking columns are added at the far right.
  */
@@ -638,47 +639,174 @@ function classify_(subject, text) {
   return 'Reply';
 }
 
+var FREE_MAIL = /^(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|proton|protonmail|rediffmail|aol|zoho)\./i;
+function lower_(x) { return String(x || '').toLowerCase(); }
+function addrsIn_(s) { return (String(s || '').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map(lower_); }
+
+/**
+ * What identifies a partner in Gmail and Calendar: their company domain, or the exact address
+ * when it is a free mailbox (gmail.com and the like). Our own colleagues are never counted.
+ */
+function partnerKeys_(o, myDomain) {
+  var keys = [];
+  emails_([o.to, o.cc, o.contacts].join(',')).map(lower_).forEach(function (a) {
+    var d = a.split('@')[1];
+    if (!d || d === myDomain) return;
+    var k = FREE_MAIL.test(d) ? a : d;
+    if (keys.indexOf(k) < 0) keys.push(k);
+  });
+  return keys;
+}
+function hits_(addr, keys) { return keys.indexOf(addr) >= 0 || keys.indexOf(addr.split('@')[1]) >= 0; }
+
+/** Recent Gmail threads with any partner (last 30 days), searched by partner domain only. */
+function partnerThreads_(allKeys) {
+  var seen = {}, out = [];
+  for (var i = 0; i < allKeys.length; i += 20) {
+    var part = allKeys.slice(i, i + 20).map(function (k) { return 'from:' + k + ' to:' + k + ' cc:' + k; }).join(' ');
+    GmailApp.search('{' + part + '} newer_than:30d -in:drafts -in:trash -in:spam', 0, 100).forEach(function (t) {
+      if (seen[t.getId()]) return;
+      seen[t.getId()] = 1;
+      var msgs = t.getMessages().filter(function (m) { return !m.isDraft(); }).map(function (m) {
+        var bulk = false;
+        try { bulk = !!m.getHeader('List-Unsubscribe'); } catch (err) {}
+        return { m: m, from: addrsIn_(m.getFrom()), all: addrsIn_([m.getFrom(), m.getTo(), m.getCc()].join(',')), date: m.getDate(), bulk: bulk };
+      });
+      out.push({ t: t, msgs: msgs, aboutUs: /interview kickstart|partner/i.test(t.getFirstMessageSubject()) });
+    });
+  }
+  return out;
+}
+
+/** Calendar events from 14 days ago to 60 days ahead, with their guests. */
+function calendarCalls_() {
+  var now = new Date();
+  var from = new Date(now.getTime() - 14 * 864e5), to = new Date(now.getTime() + 60 * 864e5);
+  return CalendarApp.getDefaultCalendar().getEvents(from, to).map(function (e) {
+    var guests = [];
+    try { guests = e.getGuestList(true).map(function (g) { return lower_(g.getEmail()); }); } catch (err) {}
+    return { start: e.getStartTime(), title: e.getTitle(), guests: guests };
+  });
+}
+
+/** The call with this partner: the next one if any, else the latest in the past two weeks. */
+function callFor_(events, keys, company) {
+  var name = lower_(company).replace(/\(.*?\)/g, '').trim();
+  var now = new Date(), next = null, last = null;
+  events.forEach(function (e) {
+    var guest = e.guests.some(function (g) { return hits_(g, keys); });
+    var titled = name.length >= 5 && lower_(e.title).indexOf(name) >= 0;
+    if (!guest && !titled) return;
+    if (e.start >= now) { if (!next || e.start < next.start) next = e; }
+    else if (!last || e.start > last.start) last = e;
+  });
+  return next || last;
+}
+
+/**
+ * Sync: reads Gmail and Calendar and updates every open row (Not sent, Sent, Replied, Call booked).
+ *  - first email sent, bounces and out-of-office (as before);
+ *  - partner replies, including ones in a new thread or to an inbound email;
+ *  - your own replies sent straight from Gmail ("Last reply sent");
+ *  - calls on your Calendar with the partner, however they were booked (their booking link, an invite
+ *    you sent from Calendar, or the hub): the row moves to Call booked with the date.
+ * Rows marked Skip or Declined are left alone.
+ */
 function sync_() {
   var sh = sh_(), L = layout_(sh), n = sh.getLastRow();
   var S = S_(statuses_(sh, L));
-  var me = [Session.getEffectiveUser().getEmail()].concat(GmailApp.getAliases()).map(function (x) { return x.toLowerCase(); });
-  var isMe = function (f) { f = f.toLowerCase(); return me.some(function (m) { return m && f.indexOf(m) >= 0; }); };
-  var res = { sent: 0, replied: 0, bounced: 0, ooo: 0, labelled: labelAll_() };
+  var me = myAddrs_();
+  var myDomain = (Session.getEffectiveUser().getEmail().split('@')[1] || '').toLowerCase();
+  var isMe = function (f) { f = lower_(f); return me.some(function (m) { return m && f.indexOf(m) >= 0; }); };
+  var res = { sent: 0, replied: 0, bounced: 0, ooo: 0, calls: 0, myReplies: 0, labelled: labelAll_() };
+  var open = [S.fresh, S.sent, S.replied, S.call, ''];
+  var rows = [], allKeys = [];
   for (var r = 2; r <= n; r++) {
     var o = readRow_(sh, L, r);
-    if (!o.company || (o.status !== S.fresh && o.status !== S.sent && o.status !== '')) continue;
-    var thread = sentThread_(o);
-    if (!thread) continue;
-    var mine = [], theirs = [], bounce = null;
-    thread.getMessages().forEach(function (m) {
-      if (m.isDraft()) return;
-      var f = m.getFrom();
-      if (/mailer-daemon|postmaster/i.test(f)) { bounce = bounce || m.getDate(); return; }
-      if (isMe(f)) mine.push(m.getDate()); else theirs.push(m);
-    });
-    if (!mine.length) continue;
-    label_(thread);
-    mine.sort(function (a, b) { return a - b; });
-    var f = {};
-    if (!o.threadId) f.threadId = thread.getId();
-    if (!o.sentOn) f.sentOn = fmt_(mine[0]);
-    if (bounce && !o.bouncedOn) { f.bouncedOn = fmt_(bounce); f.replyType = 'Bounced'; f.followUp = ''; res.bounced++; }
-    var replies = theirs.filter(function (m) { return m.getDate() > mine[0]; }).sort(function (a, b) { return a.getDate() - b.getDate(); });
-    var real = null, ooo = null;
+    if (!o.company || open.indexOf(o.status) < 0 || /^skip/i.test(String(o.notes || ''))) continue;
+    o._keys = partnerKeys_(o, myDomain);
+    o._keys.forEach(function (k) { if (allKeys.indexOf(k) < 0) allKeys.push(k); });
+    rows.push(o);
+  }
+  var threads = allKeys.length ? partnerThreads_(allKeys) : [];
+  var events = [];
+  try { events = calendarCalls_(); } catch (err) {}
+
+  rows.forEach(function (o) {
+    var f = {}, keys = o._keys;
+    var sent = sentThread_(o);
+    var firstMine = null, bounce = null, replies = [], mineAll = [];
+    if (sent) {
+      sent.getMessages().forEach(function (m) {
+        if (m.isDraft()) return;
+        var from = m.getFrom();
+        if (/mailer-daemon|postmaster/i.test(from)) { bounce = bounce || m.getDate(); return; }
+        if (isMe(from)) { mineAll.push(m.getDate()); if (!firstMine || m.getDate() < firstMine) firstMine = m.getDate(); }
+        else replies.push(m);
+      });
+      if (!firstMine) sent = null;
+    }
+    if (o.status === S.fresh || o.status === '') {
+      if (!sent) return; // not sent yet: nothing else to look at
+    }
+    if (sent) {
+      label_(sent);
+      if (!o.threadId) f.threadId = sent.getId();
+      if (!o.sentOn) f.sentOn = fmt_(firstMine);
+      if (bounce && !o.bouncedOn) { f.bouncedOn = fmt_(bounce); f.replyType = 'Bounced'; f.followUp = ''; res.bounced++; }
+      replies = replies.filter(function (m) { return m.getDate() > firstMine; });
+    }
+    // Other recent threads with this partner (new threads, inbound emails, booking confirmations).
+    if (keys.length) {
+      threads.forEach(function (x) {
+        if (sent && x.t.getId() === sent.getId()) return;
+        if (!x.msgs.some(function (q) { return q.all.some(function (a) { return hits_(a, keys); }); })) return;
+        // Only real conversations: you wrote in the thread, or it is about Interview Kickstart or a partnership.
+        // Newsletters and job alerts from the same company are ignored.
+        if (!x.aboutUs && !x.msgs.some(function (q) { return isMe(q.m.getFrom()); })) return;
+        x.msgs.forEach(function (q) {
+          if (q.bulk) return;
+          if (isMe(q.m.getFrom())) mineAll.push(q.date);
+          else if (q.from.some(function (a) { return hits_(a, keys); }) && (!firstMine || q.date > firstMine)) replies.push(q.m);
+        });
+        if (o.status === S.replied || o.status === S.call) label_(x.t);
+      });
+    }
+    replies.sort(function (a, b) { return a.getDate() - b.getDate(); });
+    var real = null, ooo = null, lastTheirs = null;
     replies.forEach(function (m) {
       var type = classify_(m.getSubject(), stripQuote_(m.getPlainBody()));
-      if (type === 'Out of office') ooo = ooo || m; else real = real || { m: m, type: type };
+      if (type === 'Out of office') { ooo = ooo || m; return; }
+      real = real || { m: m, type: type };
+      lastTheirs = m.getDate();
     });
-    if (real) {
-      f.status = S.replied; f.repliedOn = fmt_(real.m.getDate()); f.replyType = real.type;
+    var status = o.status;
+    if (real && (o.status === S.fresh || o.status === S.sent || o.status === '')) {
+      f.status = status = S.replied; f.repliedOn = fmt_(real.m.getDate()); f.replyType = real.type;
       if (!o.reply) f.reply = stripQuote_(real.m.getPlainBody());
       res.replied++;
-    } else {
+    } else if (!real && sent) {
       if (ooo && o.replyType !== 'Out of office' && !f.bouncedOn) { f.replyType = 'Out of office'; res.ooo++; }
-      if (o.status !== S.sent) { f.status = S.sent; res.sent++; }
+      if (o.status !== S.sent && (o.status === S.fresh || o.status === '')) { f.status = status = S.sent; res.sent++; }
     }
-    if (Object.keys(f).length) update_(r, f);
-  }
+    // Your own reply sent from Gmail, after their latest message.
+    if (lastTheirs) {
+      var myLast = null;
+      mineAll.forEach(function (d) { if (d > lastTheirs && (!myLast || d > myLast)) myLast = d; });
+      if (myLast && fmt_(myLast) > String(o.lastReplySent || '')) { f.lastReplySent = fmt_(myLast); res.myReplies++; }
+    }
+    // A call with them on your Calendar.
+    if (status === S.replied || status === S.call || status === S.sent) {
+      var ev = callFor_(events, keys, o.company);
+      if (ev && (o.status !== S.call || o.meetingOn !== fmt_(ev.start))) {
+        f.status = S.call; f.meetingOn = fmt_(ev.start);
+        f.next = 'Call ' + Utilities.formatDate(ev.start, tz_(), 'd MMM, h:mm a');
+        if (!o.deal) f.deal = 'Exploring';
+        res.calls++;
+      }
+    }
+    if (Object.keys(f).length) update_(o._row, f);
+  });
   return res;
 }
 

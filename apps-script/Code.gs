@@ -630,7 +630,7 @@ function stripQuote_(t, max) {
 }
 
 function classify_(subject, text) {
-  var s = subject + '\n' + text;
+  var s = (subject + '\n' + text).replace(/[\u2018\u2019\u02bc]/g, "'"); // curly apostrophes, as in "Let’s"
   if (/out of (the )?office|auto(matic)?[- ]?reply|autoreply|on leave|on vacation|away until|limited access to (my )?email|currently (away|travelling|traveling)/i.test(s)) return 'Out of office';
   if (/not interested|no,? thanks|not a (good )?fit|not looking|unsubscribe|remove me|we('ll| will) pass|not at this time|decline/i.test(s)) return 'Not interested';
   if (/not the right person|wrong person|reach out to|better person|looping in|cc'?ing|forward(ed|ing)? (this|your)/i.test(s)) return 'Wrong person';

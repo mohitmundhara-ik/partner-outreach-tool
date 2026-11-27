@@ -179,8 +179,8 @@ export default function App() {
     setBusy('');
   }
 
-  async function reply(text, mode) {
-    const r = data.rows.find((x) => x._row === rp);
+  async function reply(text, mode, id = rp) {
+    const r = data.rows.find((x) => x._row === id);
     setBusy(mode);
     try {
       const out = await api('reply', { row: r._row, text, mode });
@@ -341,7 +341,7 @@ export default function App() {
       </main>
 
       {open && <Editor key={[open._row, open[F.updated], open[F.status], open[F.followUps], open[F.followUp], open[F.deal], open[F.meetingOn], open[F.replyType], open[F.replyDraft], open[F.lastReplySent]].join(':')} row={open} statuses={statuses} today={data.today} busy={busy} hasSegmentCol={hasSegmentCol} linkBase={data.settings?.linkBase}
-        loadThread={(row) => api('thread', { row })} onFollowUp={(n) => setFu({ row: open._row, n })} onReply={() => setRp(open._row)} onMeet={() => setMeet(open._row)}
+        loadThread={(row) => api('thread', { row })} onFollowUp={(n) => setFu({ row: open._row, n })} onReply={(text, mode) => reply(text, mode, open._row)} onMeet={() => setMeet(open._row)}
         nav={nav} onClose={() => setOpenRow(null)} onSave={(f) => save(open._row, f)} onDraft={(f) => draft(open._row, f)} onSend={(f) => askSend(open._row, f)} />}
       {fu && <FollowUpModal row={data.rows.find((x) => x._row === fu.row)} n={fu.n} template={data.template} today={data.today} busy={busy === 'followup' || busy === 'template'} onCancel={() => setFu(null)} onSend={followUp} onSaveTemplate={saveTemplate} />}
       {rp && <ReplyModal row={data.rows.find((x) => x._row === rp)} busy={['draft', 'send'].includes(busy) ? busy : ''} loadPreview={(row) => api('reply', { row, mode: 'preview' })} onCancel={() => setRp(null)} onReply={reply} />}

@@ -457,23 +457,53 @@ function label_(thread) {
 }
 
 /** The whole email trail with this partner: your emails, follow-ups, their replies and bounce notices. */
+/**
+ * The whole conversation with one partner, oldest first, like a Gmail thread: your outreach thread plus
+ * any other real conversation with them (their reply in a new thread, an inbound email, a booking).
+ * Newsletters and job alerts from the same company are left out. Also returns who a reply would go to.
+ */
 function thread_(r) {
   var sh = sh_(), L = layout_(sh);
   var o = readRow_(sh, L, r);
-  var t = sentThread_(o);
-  if (!t) return { messages: [], url: '' };
-  var me = [Session.getEffectiveUser().getEmail()].concat(GmailApp.getAliases()).map(function (x) { return x.toLowerCase(); });
-  var messages = t.getMessages().filter(function (m) { return !m.isDraft(); }).map(function (m) {
-    var f = m.getFrom(), fl = f.toLowerCase();
-    var bounce = /mailer-daemon|postmaster/i.test(f);
-    var body = m.getPlainBody() || '';
-    return {
-      from: f, to: m.getTo(), cc: m.getCc(), date: m.getDate().toISOString(), subject: m.getSubject(),
-      mine: me.some(function (x) { return x && fl.indexOf(x) >= 0; }), bounce: bounce,
-      text: (bounce ? body : stripQuote_(body, 5000)).slice(0, 5000)
-    };
+  var me = myAddrs_();
+  var myDomain = (Session.getEffectiveUser().getEmail().split('@')[1] || '').toLowerCase();
+  var isMe = function (f) { f = lower_(f); return me.some(function (m) { return m && f.indexOf(m) >= 0; }); };
+  var threads = [], ids = {};
+  var add = function (t) { if (t && !ids[t.getId()]) { ids[t.getId()] = 1; threads.push(t); } };
+  var sent = sentThread_(o);
+  add(sent);
+  var keys = partnerKeys_(o, myDomain);
+  if (keys.length) {
+    var q = '{' + keys.slice(0, 12).map(function (k) { return 'from:' + k + ' to:' + k; }).join(' ') + '} newer_than:180d -in:drafts -in:trash -in:spam';
+    GmailApp.search(q, 0, 20).forEach(function (t) {
+      if (ids[t.getId()]) return;
+      var aboutUs = /interview kickstart|partner/i.test(t.getFirstMessageSubject());
+      var msgs = t.getMessages();
+      if (aboutUs || msgs.some(function (m) { return !m.isDraft() && isMe(m.getFrom()); })) add(t);
+    });
+  }
+  if (!threads.length) return { messages: [], url: '', reply: null };
+  var seen = {}, messages = [];
+  threads.forEach(function (t) {
+    t.getMessages().forEach(function (m) {
+      if (m.isDraft() || seen[m.getId()]) return;
+      seen[m.getId()] = 1;
+      var f = m.getFrom();
+      var bounce = /mailer-daemon|postmaster/i.test(f);
+      var body = m.getPlainBody() || '';
+      messages.push({
+        id: m.getId(), thread: t.getId(), from: f, to: m.getTo(), cc: m.getCc(), date: m.getDate().toISOString(), subject: m.getSubject(),
+        mine: isMe(f), bounce: bounce,
+        text: (bounce ? body : stripQuote_(body, 5000)).slice(0, 5000)
+      });
+    });
   });
-  return { messages: messages, url: 'https://mail.google.com/mail/u/0/#all/' + t.getId() };
+  messages.sort(function (x, y) { return x.date < y.date ? -1 : 1; });
+  // A reply goes to the thread with the newest message from them (as the Reply button does).
+  var reply = null;
+  try { var rt = replyThread_(o); if (rt) reply = replyRecipients_(rt); } catch (err) {}
+  var latest = threads.slice().sort(function (x, y) { return y.getLastMessageDate() - x.getLastMessageDate(); })[0];
+  return { messages: messages, url: 'https://mail.google.com/mail/u/0/#all/' + (sent || latest).getId(), reply: reply, threads: threads.length };
 }
 
 /**

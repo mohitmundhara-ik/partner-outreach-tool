@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { F, stage, emailHtml, emails, placeholders, prettyDate, DEAL_STAGES, MAX_FOLLOW_UPS } from '@/lib/fields';
+import { F, stage, emailHtml, emails, placeholders, prettyDate, DEAL_STAGES, MAX_FOLLOW_UPS, suggestedReply } from '@/lib/fields';
 import { segmentOf, bandsOf, focusOf, isCompetitor, fmtReach, reachOf } from '@/lib/segments';
 import { Field, Icon, Pill, Tag, withCurrent, followUpDue, action, ReplyTag, Score, score } from './common';
 
 const EDITABLE = [F.company, F.companyType, F.segment, F.to, F.cc, F.status, F.sentOn, F.subject, F.body, F.reply, F.next, F.notes, F.initiative, F.audience, F.form, F.how, F.suggested, F.deal, F.link, F.leads, F.enrolments, F.contacts, F.followUp];
 
 export default function Editor({ row, statuses, today, busy, hasSegmentCol, linkBase, loadThread, onClose, onSave, onDraft, onSend, onFollowUp, onReply, onMeet, nav }) {
+  const [compose, setCompose] = useState(0);
   const [f, setF] = useState(() => Object.fromEntries(EDITABLE.map((k) => [k, row[k] || ''])));
   const [name, setName] = useState('');
   const [tab, setTab] = useState(() => (stage(row[F.status]) === 'new' && !row[F.sentOn] ? 'email' : 'trail'));
@@ -77,13 +78,6 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
 
         {isCompetitor(row) && <div className="banner red">Possible competitor. Decide before sending.</div>}
         {row[F.bouncedOn] && <div className="banner red">The email to {row[F.to]} bounced on {prettyDate(row[F.bouncedOn])}. Find a new contact, change To, then set Status back to Not sent.</div>}
-        {row[F.reply] && ['replied', 'call', 'closed'].includes(st) && (
-          <div className="reply-card">
-            <div className="reply-head"><Icon name="reply" size={16} /> <b>Their reply</b> <ReplyTag row={row} /> <span className="muted small">{prettyDate(row[F.repliedOn])}</span></div>
-            <p>{row[F.reply]}</p>
-          </div>
-        )}
-
         <div className="timeline">
           <Step on={!!row[F.draftedOn]} label="Drafted" date={row[F.draftedOn]} />
           <Step on={!!row[F.sentOn]} label="Sent" date={row[F.sentOn]} />
@@ -98,7 +92,12 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
           ))}
         </div>
 
-        {tab === 'trail' && <Trail row={row} load={loadThread} />}
+        {tab === 'trail' && (
+          <Trail row={row} load={loadThread} busy={busy} compose={compose}
+            canReply={['sent', 'replied', 'call'].includes(st) && !row[F.bouncedOn]}
+            onReply={onReply} onMeet={['sent', 'replied', 'call'].includes(st) ? onMeet : null}
+            followUp={canFollow ? () => onFollowUp(nFU + 1) : null} nFU={nFU} />
+        )}
 
         {tab === 'email' && (
           <>
@@ -223,13 +222,15 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
             </>
           ) : (
             <>
+              {tab !== 'trail' && (
+                <>
               {canFollow && (
                 <button className="btn send" disabled={!!busy} onClick={() => onFollowUp(nFU + 1)}>
                   <Icon name="reply" size={16} /> Send follow-up {nFU + 1}
                 </button>
               )}
               {['sent', 'replied', 'call'].includes(st) && !row[F.bouncedOn] && (
-                <button className="btn" disabled={!!busy} onClick={onReply} title="Write back in their Gmail thread">
+                <button className="btn" disabled={!!busy} onClick={() => { setTab('trail'); setCompose((n) => n + 1); }} title="Write back at the end of the conversation">
                   <Icon name="reply" size={16} /> {row[F.replyDraft] ? 'Reply (draft saved)' : 'Reply'}
                 </button>
               )}
@@ -237,6 +238,8 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
                 <button className={'btn' + (st === 'replied' ? ' send' : '')} disabled={!!busy} onClick={onMeet}>
                   <Icon name="calendar" size={16} /> {st === 'call' ? 'Book another call' : 'Book call'}
                 </button>
+              )}
+                </>
               )}
               {!canFollow && st === 'sent' && <span className="muted small">{row[F.bouncedOn] ? 'Bounced.' : nFU >= MAX_FOLLOW_UPS ? 'Both follow-ups sent.' : ''} Sync picks up replies.</span>}
               {st === 'closed' && <span className="muted small">{/^skip/i.test(row[F.status] || '') ? `Skip: never emailed. ${String(row[F.notes] || '').replace(/^skip:?\s*/i, '').slice(0, 140)}` : `Closed as ${row[F.status]}.`}</span>}
@@ -251,40 +254,103 @@ export default function Editor({ row, statuses, today, busy, hasSegmentCol, link
   );
 }
 
-function Trail({ row, load }) {
+function Trail({ row, load, busy, compose, canReply, onReply, onMeet, followUp, nFU }) {
   const [state, setState] = useState({ loading: true });
   useEffect(() => {
     let live = true;
     load(row._row).then((d) => live && setState({ data: d }), (e) => live && setState({ error: e.message }));
     return () => { live = false; };
   }, [row._row]);
-  if (state.loading) return <div className="trail-empty"><div className="loader small" /> Loading the email trail from Gmail…</div>;
+  if (state.loading) return <div className="trail-empty"><div className="loader small" /> Loading the conversation from Gmail…</div>;
   if (state.error) return <p className="warn-text">{state.error}</p>;
   const msgs = state.data?.messages || [];
-  if (!msgs.length) return <p className="muted">No emails found in Gmail for this partner yet. Emails sent outside the hub show up here once their subject matches the one on this row.</p>;
+  const last = msgs.length - 1;
   return (
-    <div className="trail">
-      <div className="trail-top">
-        <span className="muted small">{msgs.length} email{msgs.length > 1 ? 's' : ''} · labelled "Partnership Outreach" in Gmail</span>
+    <div className="convo">
+      <div className="convo-top">
+        <div>
+          <div className="convo-subject">{msgs[0]?.subject || row[F.subject] || row[F.company]}</div>
+          <span className="muted small">{msgs.length ? `${msgs.length} email${msgs.length > 1 ? 's' : ''}${state.data.threads > 1 ? ` across ${state.data.threads} Gmail threads` : ''}, oldest first` : 'No emails found in Gmail yet'}</span>
+        </div>
         {state.data.url && <a className="btn ghost small" href={state.data.url} target="_blank" rel="noreferrer">Open in Gmail</a>}
       </div>
-      {msgs.map((m, i) => <Msg key={i} m={m} first={i === 0} company={row[F.company]} />)}
+      {!msgs.length && <p className="muted small">Emails sent outside the hub show up here once Sync matches them to this partner.</p>}
+      {msgs.map((m, i) => (
+        <Msg key={m.id || i} m={m} company={row[F.company]} startsThread={i > 0 && m.thread && m.thread !== msgs[i - 1].thread}
+          open={i === last || (!m.mine && !m.bounce && i >= last - 2)} />
+      ))}
+      {canReply && <Composer key={compose} row={row} who={state.data.reply} busy={busy} startOpen={compose > 0} onReply={onReply} onMeet={onMeet} followUp={followUp} nFU={nFU} />}
     </div>
   );
 }
 
-function Msg({ m, first, company }) {
-  const [open, setOpen] = useState(!first || !m.mine);
-  const when = new Date(m.date).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-  const who = m.bounce ? 'Delivery failed' : m.mine ? 'You' : String(m.from).replace(/<.*>/, '').replace(/"/g, '').trim() || m.from;
+const nameOf = (from) => String(from || '').replace(/<.*>/, '').replace(/"/g, '').trim() || String(from || '');
+const addrOf = (from) => (String(from || '').match(/<([^>]+)>/) || [, from])[1];
+
+function Msg({ m, company, open: startOpen, startsThread }) {
+  const [open, setOpen] = useState(startOpen);
+  const d = new Date(m.date);
+  const when = d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  const who = m.bounce ? 'Mail Delivery Subsystem' : m.mine ? 'You' : nameOf(m.from);
+  const to = [m.to, m.cc].filter(Boolean).join(', ').replace(/"([^"]*)"\s*/g, '$1 ');
   return (
-    <div className={'msg' + (m.mine ? ' mine' : '') + (m.bounce ? ' bounce' : '')}>
-      <button className="msg-head" onClick={() => setOpen(!open)}>
-        <span className="msg-who">{m.bounce && <Icon name="warn" size={14} />} {who}</span>
-        <span className="muted small">{when}</span>
-      </button>
-      {!m.mine && !m.bounce && <div className="muted small msg-addr">{m.from}</div>}
-      {open ? <div className="msg-body" dangerouslySetInnerHTML={{ __html: emailHtml(m.text, company) }} /> : <div className="msg-body clipped">{String(m.text).slice(0, 140)}…</div>}
+    <>
+      {startsThread && <div className="convo-split"><span>{m.subject}</span></div>}
+      <div className={'gmsg' + (open ? ' open' : '') + (m.bounce ? ' bounce' : '')}>
+        <button className="gmsg-head" onClick={() => setOpen(!open)}>
+          <span className={'avatar' + (m.mine ? ' me' : '')}>{m.bounce ? '!' : who.slice(0, 1).toUpperCase()}</span>
+          <span className="gmsg-meta">
+            <span className="gmsg-who">{who} {!m.mine && !m.bounce && <span className="muted small">&lt;{addrOf(m.from)}&gt;</span>}</span>
+            {open ? <span className="muted small gmsg-to">to {to || 'you'}</span> : <span className="muted small gmsg-snip">{String(m.text).replace(/\s+/g, ' ').slice(0, 110)}</span>}
+          </span>
+          <span className="muted small gmsg-when">{when}</span>
+        </button>
+        {open && <div className="msg-body gmsg-body" dangerouslySetInnerHTML={{ __html: emailHtml(m.text, company) }} />}
+      </div>
+    </>
+  );
+}
+
+/** Gmail-style reply box at the end of the conversation: reply-all, draft or send (with one confirm). */
+function Composer({ row, who, busy, startOpen, onReply, onMeet, followUp, nFU }) {
+  const [open, setOpen] = useState(startOpen || !!row[F.replyDraft]);
+  const [text, setText] = useState(() => row[F.replyDraft] || suggestedReply(row));
+  const [sure, setSure] = useState(false);
+  const ref = (el) => { if (el && startOpen) el.scrollIntoView({ block: 'nearest' }); };
+  const left = placeholders(text);
+  const rcpt = who ? [...(who.to || []), ...(who.cc || [])] : [];
+  const ready = who && rcpt.length && text.trim() && !left.length;
+  if (!open) {
+    return (
+      <div className="convo-actions">
+        <button className="btn" onClick={() => setOpen(true)} disabled={!!busy}><Icon name="reply" size={16} /> Reply all</button>
+        {followUp && <button className="btn send" onClick={followUp} disabled={!!busy}><Icon name="reply" size={16} /> Send follow-up {nFU + 1}</button>}
+        {onMeet && <button className="btn" onClick={onMeet} disabled={!!busy}><Icon name="calendar" size={16} /> Book call</button>}
+      </div>
+    );
+  }
+  return (
+    <div className="gcompose" ref={ref}>
+      <div className="gcompose-head">
+        <Icon name="reply" size={16} />
+        {who ? <span><span className="muted">To</span> {(who.to || []).join(', ') || '(nobody)'}{who.cc?.length ? <><span className="muted"> · Cc</span> {who.cc.join(', ')}</> : null}</span>
+          : <span className="warn-text">No Gmail thread with {row[F.company]} to reply in. Reply from Gmail this time.</span>}
+      </div>
+      <textarea rows={9} value={text} onChange={(e) => { setText(e.target.value); setSure(false); }} autoFocus={startOpen} />
+      {left.length > 0 && <p className="warn-text small">Fill in {left.join(', ')} first.</p>}
+      {row[F.lastReplySent] && <p className="muted small">Last reply sent {prettyDate(row[F.lastReplySent])}.</p>}
+      {sure && <div className="banner">Send this to {rcpt.join(', ')} now? It can't be unsent.</div>}
+      <div className="gcompose-actions">
+        {!sure ? (
+          <button className="btn send" disabled={!!busy || !ready} onClick={() => setSure(true)}><Icon name="send" size={16} /> Send</button>
+        ) : (
+          <button className="btn send" disabled={!!busy || !ready} onClick={() => onReply(text, 'send')}><Icon name="send" size={16} /> {busy === 'send' ? 'Sending…' : 'Yes, send it'}</button>
+        )}
+        <button className="btn" disabled={!!busy || !ready} onClick={() => onReply(text, 'draft')}><Icon name="draft" size={16} /> {busy === 'draft' ? 'Saving…' : 'Save as Gmail draft'}</button>
+        <span className="spacer" />
+        {onMeet && <button className="btn ghost" onClick={onMeet} disabled={!!busy}><Icon name="calendar" size={16} /> Book call</button>}
+        <button className="btn ghost" onClick={() => { setOpen(false); setSure(false); }} disabled={!!busy}>Close</button>
+      </div>
     </div>
   );
 }

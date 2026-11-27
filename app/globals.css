@@ -457,3 +457,31 @@ tr.picked td { background: var(--brand-soft); }
 .pdetail dd { margin: 0; font-size: 13px; color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .pdetail-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 @media (max-width: 700px) { .table tr.detail-row > td { padding-left: 10px; } .pdetail { position: sticky; left: 0; max-width: calc(100vw - 72px); } .pdetail dl { grid-template-columns: 1fr; } }
+
+/* Email trail as one Gmail-style conversation */
+.convo { flex-shrink: 0; display: grid; gap: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
+.convo-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.convo-subject { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+.convo > p { padding: 0 14px; }
+.convo-split { padding: 8px 14px; background: var(--soft, rgba(0,0,0,.03)); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.convo-split span::before { content: 'New thread: '; font-weight: 600; }
+.gmsg { border-bottom: 1px solid var(--line); }
+.gmsg.bounce { background: var(--red-soft); }
+.gmsg-head { width: 100%; display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; border: 0; background: none; padding: 10px 14px; font: inherit; color: var(--ink); cursor: pointer; text-align: left; }
+.gmsg-head:hover { background: rgba(0,0,0,.02); }
+.avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 13px; background: color-mix(in srgb, var(--green) 18%, var(--card)); color: var(--ink); }
+.avatar.me { background: var(--brand-soft); }
+.gmsg.bounce .avatar { background: var(--red); color: #fff; }
+.gmsg-meta { display: grid; min-width: 0; }
+.gmsg-who { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gmsg-who .muted { font-weight: 400; }
+.gmsg-snip, .gmsg-to { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gmsg-when { white-space: nowrap; }
+.gmsg-body { padding: 0 14px 14px 56px; }
+.convo-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 14px; }
+.gcompose { margin: 12px 14px 14px; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; }
+.gcompose-head { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.gcompose textarea { width: 100%; border: 0; border-radius: 0; padding: 10px 12px; font-family: Arial, Helvetica, sans-serif; font-size: 13.5px; line-height: 1.55; resize: vertical; box-shadow: none; }
+.gcompose > p, .gcompose > .banner { margin: 0 12px 8px; }
+.gcompose-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid var(--line); }
+@media (max-width: 960px) { .gmsg-body { padding-left: 14px; } .gmsg-when { font-size: 11px; } }
